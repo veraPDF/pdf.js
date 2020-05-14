@@ -77,6 +77,7 @@ import { ImageResizer } from "./image_resizer.js";
 import { MurmurHash3_64 } from "../shared/murmurhash3.js";
 import { OperatorList } from "./operator_list.js";
 import { PDFImage } from "./image.js";
+import {BoundingBoxesCalculator} from "./bounding_boxes";
 
 const DefaultPartialEvaluatorOptions = Object.freeze({
   maxImageSize: -1,
@@ -1078,7 +1079,7 @@ class PartialEvaluator {
 
     state.font = translated.font;
     translated.send(this.handler);
-    return translated.loadedName;
+    return translated;
   }
 
   handleText(chars, state) {
@@ -1723,6 +1724,7 @@ class PartialEvaluator {
     operatorList,
     initialState = null,
     fallbackFontDict = null,
+    intent,
   }) {
     // Ensure that `resources`/`initialState` is correctly initialized,
     // even if the provided parameter is e.g. `null`.
@@ -1733,6 +1735,7 @@ class PartialEvaluator {
       throw new Error('getOperatorList: missing "operatorList" parameter');
     }
 
+    var boundingBoxCalculator = new BoundingBoxesCalculator(!(intent & RenderingIntentFlag.OPLIST));
     const self = this;
     const xref = this.xref;
     let parsingText = false;
@@ -1859,6 +1862,7 @@ class PartialEvaluator {
                     }, rejectXObject);
                   return;
                 } else if (type.name === "Image") {
+                  boundingBoxCalculator.parseOperator(OPS.paintXObject, [type.name]);
                   self
                     .buildPaintImageXObject({
                       resources,
@@ -1906,9 +1910,10 @@ class PartialEvaluator {
                   stateManager.state,
                   fallbackFontDict
                 )
-                .then(function (loadedName) {
-                  operatorList.addDependency(loadedName);
-                  operatorList.addOp(OPS.setFont, [loadedName, fontSize]);
+                .then(function (translated) {
+                  boundingBoxCalculator.parseOperator(OPS.setFont, [fontSize, translated]);
+                  operatorList.addDependency(translated.loadedName);
+                  operatorList.addOp(OPS.setFont, [translated.loadedName, fontSize]);
                 })
             );
             return;
@@ -1970,6 +1975,7 @@ class PartialEvaluator {
               continue;
             }
             operatorList.addOp(OPS.nextLine);
+            boundingBoxCalculator.parseOperator(OPS.nextLine);
             args[0] = self.handleText(args[0], stateManager.state);
             fn = OPS.showText;
             break;
@@ -1981,6 +1987,9 @@ class PartialEvaluator {
             operatorList.addOp(OPS.nextLine);
             operatorList.addOp(OPS.setWordSpacing, [args.shift()]);
             operatorList.addOp(OPS.setCharSpacing, [args.shift()]);
+            boundingBoxCalculator.parseOperator(OPS.nextLine);
+            boundingBoxCalculator.parseOperator(OPS.setWordSpacing, [args.shift()]);
+            boundingBoxCalculator.parseOperator(OPS.setCharSpacing, [args.shift()]);
             args[0] = self.handleText(args[0], stateManager.state);
             fn = OPS.showText;
             break;
@@ -2219,6 +2228,7 @@ class PartialEvaluator {
           case OPS.closePath:
           case OPS.rectangle:
             self.buildPath(operatorList, fn, args, parsingText);
+            boundingBoxCalculator.parseOperator(fn, args);
             continue;
           case OPS.markPoint:
           case OPS.markPointProps:
@@ -2232,6 +2242,7 @@ class PartialEvaluator {
             // but doing so is meaningless without knowing the semantics.
             continue;
           case OPS.beginMarkedContentProps:
+            boundingBoxCalculator.parseOperator(fn, args);
             if (!(args[0] instanceof Name)) {
               warn(`Expected name for beginMarkedContentProps arg0=${args[0]}`);
               operatorList.addOp(OPS.beginMarkedContentProps, ["OC", null]);
@@ -2275,6 +2286,7 @@ class PartialEvaluator {
             break;
           case OPS.beginMarkedContent:
           case OPS.endMarkedContent:
+            boundingBoxCalculator.parseOperator(fn, args);
           default:
             // Note: Ignore the operator if it has `Dict` arguments, since
             // those are non-serializable, otherwise postMessage will throw
@@ -2291,6 +2303,7 @@ class PartialEvaluator {
               }
             }
         }
+        boundingBoxCalculator.parseOperator(fn, args);
         operatorList.addOp(fn, args);
       }
       if (stop) {
@@ -2300,7 +2313,10 @@ class PartialEvaluator {
       // Some PDFs don't close all restores inside object/form.
       // Closing those for them.
       closePendingRestoreOPS();
-      resolve();
+      // Add extra data about marked content as last element of operator list
+      // with corresponding function 'save', because it won't affect on
+      // the process of rendering
+      resolve(boundingBoxCalculator.boundingBoxes);
     }).catch(reason => {
       if (reason instanceof AbortException) {
         return;
@@ -5188,4 +5204,4 @@ class EvaluatorPreprocessor {
   }
 }
 
-export { EvaluatorPreprocessor, PartialEvaluator };
+export { EvaluatorPreprocessor, PartialEvaluator, StateManager, TextState };

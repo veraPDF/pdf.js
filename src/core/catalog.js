@@ -1757,4 +1757,125 @@ class Catalog {
   }
 }
 
-export { Catalog };
+class ExtendedCatalog extends Catalog {
+  constructor(pdfManager, xref) {
+    super(pdfManager, xref);
+
+    this.pages = this.getPages(this.toplevelPagesDict.get('Kids'));
+  }
+
+  _convertStructToObject(struct) {
+    if (Array.isArray(struct)) {
+      return struct.map(el => this._convertStructToObject(el));
+    } else if (isDict(struct)) {
+      let result = {};
+      struct.getKeys().forEach(key => {
+        result[key] = this._convertStructToObject(struct.get(key));
+      });
+      return result;
+    } else if (isName(struct)) {
+      return struct.name;
+    } else {
+      return struct;
+    }
+  }
+
+  get structTreeRoot() {
+    const structTreeRoot = this.catDict.get('StructTreeRoot');
+    if (!isDict(structTreeRoot)) {
+      return null;
+    }
+    return shadow(this, 'structTreeRoot', structTreeRoot);
+  }
+
+  getTreeElement(el, page, ref) {
+    //update page for current element
+    if (isDict(el) && el.has('Pg')) {
+      let pageRef = el.getRaw('Pg');
+      let newPage = this.pages.findIndex(el => el.num === pageRef.num && el.gen === pageRef.gen);
+      newPage = newPage !== -1 ? newPage : null;
+      if (newPage !== page) {
+        page = newPage;
+      }
+    }
+
+    if (isDict(el) && el.has('K')) {
+      return {
+        name: stringToUTF8String(el.get('S').name),
+        children: this.getTreeElement(el.get('K'), page, el.getRaw('K')),
+        ref: ref
+      }
+    }
+
+    if (isDict(el) && el.has('Obj')) {
+      let obj = el.get('Obj');
+      let type = null;
+      if (obj.has('Type')) {
+        type = obj.get('Type').name;
+      }
+      if (obj.has('Subtype')) {
+        type = obj.get('Subtype').name;
+      }
+      switch (type){
+        case 'Link':
+        case 'Annot':
+          let rect = obj.get('Rect');
+          return {
+            rect: [rect[0], rect[1], rect[2], rect[3]],
+            pageIndex: page
+          };
+        default:
+          break;
+      }
+    }
+
+    if (Array.isArray(el)) {
+      return el.map(subel => {
+        if (Number.isInteger(subel)) {
+          return {mcid: subel, pageIndex: page};
+        } else if (!(subel.hasOwnProperty('num') && subel.hasOwnProperty('gen')) && subel.get('Type') !== 'OBJR') {
+          return this.getTreeElement(subel, page);
+        } else if (subel.hasOwnProperty('num') && subel.hasOwnProperty('gen')){
+          return this.getTreeElement(this.xref.fetch(subel), page, subel);
+        }
+      })
+    }
+
+    if (Number.isInteger(el)) {
+      return {mcid: el, pageIndex: page};
+    }
+
+    if (isDict(el) && el.has('Type') && el.get('Type').name === 'MCR') {
+      return {mcid: el.get('MCID'), pageIndex: page};
+    }
+  }
+
+  getPages(pages) {
+    let pagesArray = [];
+    pages.map(kid => {
+      if (kid instanceof Ref){
+        let kidObj = this.xref.fetch(kid);
+        let kidObjType = kidObj.get('Type').name;
+        switch (kidObjType) {
+          case 'Page':
+            pagesArray.push(kid);
+            break;
+          case 'Pages':
+            let array = this.getPages(kidObj.get('Kids'));
+            pagesArray = pagesArray.concat(array);
+            break;
+          default:
+            break;
+        }
+      }
+    });
+    return pagesArray;
+  }
+
+  get structureTree() {
+    return shadow(this, 'structureTree', this.getTreeElement(this.structTreeRoot.get('K'), null, this.structTreeRoot.getRaw('K')));
+  }
+}
+
+export { ExtendedCatalog as Catalog };
+

@@ -20,6 +20,7 @@ import {
   info,
   InvalidPDFException,
   isArrayEqual,
+  OPS,
   PageActionEventType,
   RenderingIntentFlag,
   shadow,
@@ -505,6 +506,7 @@ class Page {
       );
     }
 
+    let boundingBoxes;
     const pageListPromise = Promise.all([
       contentStreamPromise,
       resourcesPromise,
@@ -526,8 +528,10 @@ class Page {
           task,
           resources: this.resources,
           operatorList: opList,
+          intent
         })
-        .then(function () {
+        .then(function (boundingBoxesByMCID) {
+          boundingBoxes = boundingBoxesByMCID;
           return opList;
         });
     });
@@ -565,6 +569,9 @@ class Page {
         annotations.length === 0 ||
         intent & RenderingIntentFlag.ANNOTATIONS_DISABLE
       ) {
+        if (intent & RenderingIntentFlag.OPLIST) {
+          pageOpList.addOp(OPS.save, boundingBoxes);
+        }
         pageOpList.flush(/* lastChunk = */ true);
         return { length: pageOpList.totalLength };
       }
@@ -617,6 +624,9 @@ class Page {
 
           form ||= separateForm;
           canvas ||= separateCanvas;
+        }
+        if (intent === 'oplist') {
+          pageOpList.addOp(OPS.save, boundingBoxes);
         }
         pageOpList.flush(
           /* lastChunk = */ true,
@@ -1932,4 +1942,17 @@ class PDFDocument {
   }
 }
 
-export { Page, PDFDocument };
+class ExtendedPDFDocument extends PDFDocument{
+  constructor(pdfManager, arg) {
+    super(pdfManager, arg);
+  }
+
+  get structureTree() {
+    return shadow(this, 'structureTree', this.catalog.structureTree);
+  }
+}
+
+export {
+  Page,
+  ExtendedPDFDocument as PDFDocument,
+};
