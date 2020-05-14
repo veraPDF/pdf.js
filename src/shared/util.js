@@ -339,6 +339,9 @@ const OPS = {
   paintImageMaskXObjectRepeat: 89,
   paintSolidColorImageMask: 90,
   constructPath: 91,
+  boundingBoxes: 100,
+  operationPosition: 101,
+  annotBBoxesAndOpPos: 102,
 };
 
 const PasswordResponses = {

@@ -775,6 +775,7 @@ gulp.task("default", function (done) {
 });
 
 function createBuildNumber(done) {
+  /*
   console.log();
   console.log("### Getting extension build number");
 
@@ -818,6 +819,12 @@ function createBuildNumber(done) {
       });
     }
   );
+  */
+
+  console.log();
+  console.log("### Getting custom build number");
+
+  gulp.src("./version.json").pipe(gulp.dest(BUILD_DIR)).on("end", done);
 }
 
 function buildDefaultPreferences(defines, dir) {

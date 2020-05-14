@@ -20,6 +20,7 @@ import {
   info,
   InvalidPDFException,
   isArrayEqual,
+  OPS,
   PageActionEventType,
   RenderingIntentFlag,
   shadow,
@@ -504,6 +505,7 @@ class Page {
       );
     }
 
+    let MCIDBoundingBoxes, positionByOperationIndex, noMCIDBoundingBoxes;
     const pageListPromise = Promise.all([
       contentStreamPromise,
       resourcesPromise,
@@ -525,8 +527,12 @@ class Page {
           task,
           resources: this.resources,
           operatorList: opList,
+          intent,
         })
-        .then(function () {
+        .then(function ([boundingBoxesByMCID, operationArray, boundingBoxesWithoutMCID]) {
+          MCIDBoundingBoxes = boundingBoxesByMCID;
+          positionByOperationIndex = operationArray;
+          noMCIDBoundingBoxes = boundingBoxesWithoutMCID;
           return opList;
         });
     });
@@ -564,6 +570,11 @@ class Page {
         annotations.length === 0 ||
         intent & RenderingIntentFlag.ANNOTATIONS_DISABLE
       ) {
+        if (intent & RenderingIntentFlag.OPLIST) {
+          pageOpList.addOp(OPS.annotBBoxesAndOpPos, []);
+          pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
+          pageOpList.addOp(OPS.boundingBoxes, [MCIDBoundingBoxes, noMCIDBoundingBoxes]);
+        }
         pageOpList.flush(/* lastChunk = */ true);
         return { length: pageOpList.totalLength };
       }
@@ -580,7 +591,8 @@ class Page {
           intentAny ||
           (intentDisplay &&
             annotation.mustBeViewed(annotationStorage, renderForms)) ||
-          (intentPrint && annotation.mustBePrinted(annotationStorage))
+          (intentPrint && annotation.mustBePrinted(annotationStorage)) ||
+          intent & RenderingIntentFlag.OPLIST
         ) {
           opListPromises.push(
             annotation
@@ -610,11 +622,28 @@ class Page {
         let form = false,
           canvas = false;
 
-        for (const { opList, separateForm, separateCanvas } of opLists) {
+        const annotationsBBoxesAndOperationPosition = [];
+        for (const { opList, separateForm, separateCanvas, annotBBoxesAndOpPos } of opLists) {
           pageOpList.addOpList(opList);
+
 
           form ||= separateForm;
           canvas ||= separateCanvas;
+
+          annotationsBBoxesAndOperationPosition.push(
+            annotBBoxesAndOpPos ? [
+              annotBBoxesAndOpPos.operationPosition,
+              annotBBoxesAndOpPos.boundingBoxes,
+            ] : []
+          );
+        }
+        if (intent & RenderingIntentFlag.OPLIST) {
+          pageOpList.addOp(OPS.annotBBoxesAndOpPos, annotationsBBoxesAndOperationPosition);
+          pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
+          pageOpList.addOp(OPS.boundingBoxes, [
+            MCIDBoundingBoxes,
+            noMCIDBoundingBoxes,
+          ]);
         }
         pageOpList.flush(
           /* lastChunk = */ true,
@@ -713,7 +742,11 @@ class Page {
       // Get the annotation even if it's hidden because
       // JS can change its display.
       const isVisible = intentAny || (intentDisplay && annotation.viewable);
-      if (isVisible || (intentPrint && annotation.printable)) {
+      if (
+        isVisible ||
+        (intentPrint && annotation.printable) ||
+        intent & RenderingIntentFlag.OPLIST
+      ) {
         annotationsData.push(annotation.data);
       }
 
@@ -1930,4 +1963,14 @@ class PDFDocument {
   }
 }
 
-export { Page, PDFDocument };
+class ExtendedPDFDocument extends PDFDocument {
+  constructor(pdfManager, arg) {
+    super(pdfManager, arg);
+  }
+
+  get structureTree() {
+    return shadow(this, "structureTree", this.catalog.structureTree);
+  }
+}
+
+export { Page, ExtendedPDFDocument as PDFDocument };
