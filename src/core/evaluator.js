@@ -23,6 +23,7 @@ import {
   isArrayEqual,
   normalizeUnicode,
   OPS,
+  RenderingIntentFlag,
   shadow,
   stringToPDFString,
   TextRenderingMode,
@@ -70,6 +71,8 @@ import {
 } from "./image_utils.js";
 import { BaseStream } from "./base_stream.js";
 import { bidi } from "./bidi.js";
+// eslint-disable-next-line import/no-cycle
+import { BoundingBoxesCalculator } from "./bounding_boxes.js";
 import { ColorSpace } from "./colorspace.js";
 import { ColorSpaceUtils } from "./colorspace_utils.js";
 import { FontInfo } from "../shared/obj-bin-transform.js";
@@ -464,7 +467,10 @@ class PartialEvaluator {
     task,
     initialState,
     localColorSpaceCache,
-    seenRefs
+    seenRefs,
+    intent = RenderingIntentFlag.DISPLAY,
+    initialTextState,
+    initialGraphicsState
   ) {
     const { dict } = xobj;
     const matrix = lookupMatrix(dict.getArray("Matrix"), null);
@@ -524,14 +530,18 @@ class PartialEvaluator {
 
     const localResources = dict.get("Resources");
 
-    await this.getOperatorList({
-      stream: xobj,
-      task,
-      resources: localResources instanceof Dict ? localResources : resources,
-      operatorList,
-      initialState,
-      prevRefs: seenRefs,
-    });
+    const [boundingBoxesByMCID, operationArray, boundingBoxesWithoutMCID] =
+      await this.getOperatorList({
+        stream: xobj,
+        task,
+        resources: localResources instanceof Dict ? localResources : resources,
+        operatorList,
+        initialState,
+        prevRefs: seenRefs,
+        intent,
+        initialTextState,
+        initialGraphicsState,
+      });
     operatorList.addOp(OPS.paintFormXObjectEnd, []);
 
     if (group) {
@@ -541,6 +551,7 @@ class PartialEvaluator {
     if (optionalContent !== undefined) {
       operatorList.addOp(OPS.endMarkedContent, []);
     }
+    return [boundingBoxesByMCID, operationArray, boundingBoxesWithoutMCID];
   }
 
   _sendImgData(objId, imgData, cacheGlobally = false) {
@@ -1021,7 +1032,7 @@ class PartialEvaluator {
 
     state.font = translated.font;
     translated.send(this.handler);
-    return translated.loadedName;
+    return translated;
   }
 
   handleText(chars, state) {
@@ -1111,9 +1122,9 @@ class PartialEvaluator {
               operatorList,
               task,
               stateManager.state
-            ).then(function (loadedName) {
-              operatorList.addDependency(loadedName);
-              gStateObj.push([key, [loadedName, value[1]]]);
+            ).then(function (translated) {
+              operatorList.addDependency(translated.loadedName);
+              gStateObj.push([key, [translated.loadedName, value[1]]]);
             })
           );
           break;
@@ -1699,6 +1710,7 @@ class PartialEvaluator {
   }
 
   getOperatorList({
+    initStreamPos,
     stream,
     task,
     resources,
@@ -1706,6 +1718,9 @@ class PartialEvaluator {
     initialState = null,
     fallbackFontDict = null,
     prevRefs = null,
+    intent,
+    initialTextState = null,
+    initialGraphicsState = null,
   }) {
     const objId = stream.dict?.objId;
     const seenRefs = new RefSet(prevRefs);
@@ -1727,8 +1742,18 @@ class PartialEvaluator {
       throw new Error('getOperatorList: missing "operatorList" parameter');
     }
 
+    const isOpListIntent = !!(intent & RenderingIntentFlag.OPLIST);
+    const boundingBoxCalculator = new BoundingBoxesCalculator(
+      !isOpListIntent,
+      initialTextState,
+      initialGraphicsState
+    );
     const self = this;
     const xref = this.xref;
+    let prevStreamPos;
+    if (initStreamPos) {
+      stream.pos = initStreamPos;
+    }
     const localImageCache = new LocalImageCache();
     const localColorSpaceCache = new LocalColorSpaceCache();
     const localGStateCache = new LocalGStateCache();
@@ -1763,6 +1788,9 @@ class PartialEvaluator {
       const operation = {};
       let stop, i, ii, cs, name, isValidName;
       while (!(stop = timeSlotManager.check())) {
+        if (prevStreamPos) {
+          stream.pos = prevStreamPos;
+        }
         // The arguments parsed by read() are used beyond this loop, so we
         // cannot reuse the same array on each iteration. Therefore we pass
         // in |null| as the initial value (see the comment on
@@ -1773,7 +1801,9 @@ class PartialEvaluator {
         }
         let args = operation.args;
         let fn = operation.fn;
+        boundingBoxCalculator.incrementOperation(fn);
 
+        prevStreamPos = stream.pos;
         switch (fn | 0) {
           case OPS.paintXObject:
             // eagerly compile XForm objects
@@ -1783,6 +1813,9 @@ class PartialEvaluator {
             if (isValidName) {
               const localImage = localImageCache.getByName(name);
               if (localImage) {
+                boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                  "Image",
+                ]);
                 addCachedImageOps(operatorList, localImage);
                 args = null;
                 continue;
@@ -1801,7 +1834,11 @@ class PartialEvaluator {
                     localImageCache.getByRef(xobj) ||
                     self._regionalImageCache.getByRef(xobj) ||
                     self.globalImageCache.getData(xobj, self.pageIndex);
+
                   if (cachedImage) {
+                    boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                      "Image",
+                    ]);
                     addCachedImageOps(operatorList, cachedImage);
                     resolveXObject();
                     return;
@@ -1821,6 +1858,7 @@ class PartialEvaluator {
 
                 if (type.name === "Form") {
                   stateManager.save();
+                  boundingBoxCalculator.saveState();
                   self
                     .buildFormXObject(
                       resources,
@@ -1830,14 +1868,25 @@ class PartialEvaluator {
                       task,
                       stateManager.state.clone({ newPath: true }),
                       localColorSpaceCache,
-                      seenRefs
+                      seenRefs,
+                      intent,
+                      boundingBoxCalculator.textState,
+                      boundingBoxCalculator.graphicsState
                     )
-                    .then(function () {
+                    .then(function ([boundingBoxesByMCID]) {
+                      boundingBoxCalculator.addRefBoundingBoxes(
+                        xobj.dict.objId,
+                        boundingBoxesByMCID
+                      );
                       stateManager.restore();
+                      boundingBoxCalculator.restoreState();
                       resolveXObject();
                     }, rejectXObject);
                   return;
                 } else if (type.name === "Image") {
+                  boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                    type.name,
+                  ]);
                   self
                     .buildPaintImageXObject({
                       resources,
@@ -1885,9 +1934,16 @@ class PartialEvaluator {
                   stateManager.state,
                   fallbackFontDict
                 )
-                .then(function (loadedName) {
-                  operatorList.addDependency(loadedName);
-                  operatorList.addOp(OPS.setFont, [loadedName, fontSize]);
+                .then(function (translated) {
+                  boundingBoxCalculator.parseOperator(OPS.setFont, [
+                    fontSize,
+                    translated,
+                  ]);
+                  operatorList.addDependency(translated.loadedName);
+                  operatorList.addOp(OPS.setFont, [
+                    translated.loadedName,
+                    fontSize,
+                  ]);
                 })
             );
             return;
@@ -1912,6 +1968,7 @@ class PartialEvaluator {
                 localColorSpaceCache,
               })
             );
+            boundingBoxCalculator.parseOperator(fn, args);
             return;
           case OPS.showText:
             if (!stateManager.state.font) {
@@ -1943,6 +2000,7 @@ class PartialEvaluator {
               continue;
             }
             operatorList.addOp(OPS.nextLine);
+            boundingBoxCalculator.parseOperator(OPS.nextLine);
             args[0] = self.handleText(args[0], stateManager.state);
             fn = OPS.showText;
             break;
@@ -1954,6 +2012,13 @@ class PartialEvaluator {
             operatorList.addOp(OPS.nextLine);
             operatorList.addOp(OPS.setWordSpacing, [args.shift()]);
             operatorList.addOp(OPS.setCharSpacing, [args.shift()]);
+            boundingBoxCalculator.parseOperator(OPS.nextLine);
+            boundingBoxCalculator.parseOperator(OPS.setWordSpacing, [
+              args.shift(),
+            ]);
+            boundingBoxCalculator.parseOperator(OPS.setCharSpacing, [
+              args.shift(),
+            ]);
             args[0] = self.handleText(args[0], stateManager.state);
             fn = OPS.showText;
             break;
@@ -1974,6 +2039,7 @@ class PartialEvaluator {
 
             next(
               self._handleColorSpace(fillCS).then(colorSpace => {
+                boundingBoxCalculator.parseOperator(fn, args);
                 stateManager.state.fillColorSpace =
                   colorSpace || ColorSpaceUtils.gray;
               })
@@ -1993,6 +2059,7 @@ class PartialEvaluator {
 
             next(
               self._handleColorSpace(strokeCS).then(colorSpace => {
+                boundingBoxCalculator.parseOperator(fn, args);
                 stateManager.state.strokeColorSpace =
                   colorSpace || ColorSpaceUtils.gray;
               })
@@ -2194,6 +2261,7 @@ class PartialEvaluator {
                 throw reason;
               })
             );
+            boundingBoxCalculator.parseOperator(fn, args);
             return;
           case OPS.setLineWidth: {
             // The thickness should be a non-negative number, as per spec.
@@ -2231,6 +2299,7 @@ class PartialEvaluator {
           case OPS.closePath:
           case OPS.rectangle:
             self.buildPath(fn, args, stateManager.state);
+            boundingBoxCalculator.parseOperator(fn, args);
             continue;
           case OPS.stroke:
           case OPS.closeStroke:
@@ -2279,6 +2348,11 @@ class PartialEvaluator {
             // but doing so is meaningless without knowing the semantics.
             continue;
           case OPS.beginMarkedContentProps:
+            if (args[1] instanceof Name) {
+              const reference = resources.get("Properties").get(args[1].name);
+              args = [args[0], reference];
+            }
+            boundingBoxCalculator.parseOperator(fn, args);
             if (!(args[0] instanceof Name)) {
               warn(`Expected name for beginMarkedContentProps arg0=${args[0]}`);
               operatorList.addOp(OPS.beginMarkedContentProps, ["OC", null]);
@@ -2322,6 +2396,7 @@ class PartialEvaluator {
             break;
           case OPS.beginMarkedContent:
           case OPS.endMarkedContent:
+            boundingBoxCalculator.parseOperator(fn, args);
           default:
             // Note: Ignore the operator if it has `Dict` arguments, since
             // those are non-serializable, otherwise postMessage will throw
@@ -2338,6 +2413,7 @@ class PartialEvaluator {
               }
             }
         }
+        boundingBoxCalculator.parseOperator(fn, args);
         operatorList.addOp(fn, args);
       }
       if (stop) {
@@ -2347,7 +2423,16 @@ class PartialEvaluator {
       // Some PDFs don't close all restores inside object/form.
       // Closing those for them.
       closePendingRestoreOPS();
-      resolve();
+      // Add extra data about marked content and glyphs position
+      // as last elements of operator list with corresponding
+      // custom functions 'operationPosition'(100) and 'boundingBoxes'(101),
+      // because it won't affect on the process of rendering
+      resolve([
+        boundingBoxCalculator.boundingBoxes,
+        boundingBoxCalculator.operationArray,
+        boundingBoxCalculator.getNoMCIDBoundingBoxes(),
+        boundingBoxCalculator.refBoundingBoxes,
+      ]);
     }).catch(reason => {
       if (reason instanceof AbortException) {
         return;
@@ -4963,7 +5048,7 @@ class TextState {
     this.fontSize = 0;
     this.loadedName = null;
     this.font = null;
-    this.fontMatrix = FONT_IDENTITY_MATRIX;
+    this.fontMatrix = FONT_IDENTITY_MATRIX.slice();
     this.textMatrix = IDENTITY_MATRIX.slice();
     this.textLineMatrix = IDENTITY_MATRIX.slice();
     this.charSpacing = 0;
@@ -5012,9 +5097,15 @@ class TextState {
 
   clone() {
     const clone = Object.create(this);
-    clone.textMatrix = this.textMatrix.slice();
-    clone.textLineMatrix = this.textLineMatrix.slice();
-    clone.fontMatrix = this.fontMatrix.slice();
+    clone.textMatrix = this.textMatrix
+      ? this.textMatrix.slice()
+      : IDENTITY_MATRIX.slice();
+    clone.textLineMatrix = this.textLineMatrix
+      ? this.textLineMatrix.slice()
+      : IDENTITY_MATRIX.slice();
+    clone.fontMatrix = this.fontMatrix
+      ? this.fontMatrix.slice()
+      : FONT_IDENTITY_MATRIX.slice();
     return clone;
   }
 }
@@ -5350,4 +5441,4 @@ class EvaluatorPreprocessor {
   }
 }
 
-export { EvaluatorPreprocessor, PartialEvaluator };
+export { EvaluatorPreprocessor, PartialEvaluator, StateManager, TextState };

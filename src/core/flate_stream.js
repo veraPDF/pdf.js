@@ -167,6 +167,7 @@ class FlateStream extends DecodeStream {
     try {
       const { readable, writable } = new DecompressionStream("deflate");
       const writer = writable.getWriter();
+      // SHOULD BE FIXED IN FUTURE PDF.JS VERSIONS - START
       await writer.ready;
 
       // We can't await writer.write() because it'll block until the reader
@@ -178,6 +179,7 @@ class FlateStream extends DecodeStream {
           await writer.close();
         })
         .catch(() => {});
+      // SHOULD BE FIXED IN FUTURE PDF.JS VERSIONS - END
 
       const chunks = [];
       let totalLength = 0;

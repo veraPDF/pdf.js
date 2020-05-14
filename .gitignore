@@ -7,3 +7,9 @@ Makefile
 node_modules/
 examples/node/svgdump/
 examples/node/pdf2png/*.png
+.idea/.gitignore
+.idea/vcs.xml
+src/core/document.js.orig
+src/core/evaluator.js.orig
+src/core/catalog.js.orig
+src/core/worker.js.orig

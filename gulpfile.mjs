@@ -44,6 +44,7 @@ import Vinyl from "vinyl";
 import webpack2 from "webpack";
 import webpackStream from "webpack-stream";
 import zip from "gulp-zip";
+import notifier from "node-notifier";
 
 const __dirname = import.meta.dirname;
 
@@ -871,6 +872,7 @@ gulp.task("default", function (done) {
 });
 
 function createBuildNumber(done) {
+  /*
   console.log();
   console.log("### Getting extension build number");
 
@@ -914,6 +916,12 @@ function createBuildNumber(done) {
       });
     }
   );
+  */
+
+  console.log();
+  console.log("### Getting custom build number");
+
+  gulp.src("./version.json").pipe(gulp.dest(BUILD_DIR)).on("end", done);
 }
 
 function buildDefaultPreferences(defines, dir) {
@@ -2377,10 +2385,11 @@ gulp.task(
     "minified",
     "minified-legacy",
     "types",
-    function createDist() {
+    function createDist(done) {
       fs.rmSync(DIST_DIR, { recursive: true, force: true });
       fs.mkdirSync(DIST_DIR, { recursive: true });
 
+      done();
       return ordered([
         packageJson().pipe(gulp.dest(DIST_DIR)),
         gulp
@@ -2485,6 +2494,14 @@ gulp.task(
           .src(TYPES_DIR + "**/*", { base: TYPES_DIR, encoding: false })
           .pipe(gulp.dest(DIST_DIR + "types/")),
       ]);
+    },
+    function sendNotification(done) {
+      notifier.notify({
+        icon: path.join(__dirname, 'logo.svg'),
+        title: 'PDF.JS',
+        message: 'Dist build finished'
+      });
+      done();
     }
   )
 );

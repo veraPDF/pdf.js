@@ -340,6 +340,9 @@ const OPS = {
   setStrokeTransparent: 92,
   setFillTransparent: 93,
   rawFillPath: 94,
+  boundingBoxes: 100,
+  operationPosition: 101,
+  annotBBoxesAndOpPos: 102,
 };
 
 // In order to have a switch statement that is fast (i.e. which use a jump
