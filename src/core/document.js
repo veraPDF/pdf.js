@@ -342,6 +342,7 @@ class Page {
     });
 
     const dataPromises = Promise.all([contentStreamPromise, resourcesPromise]);
+    let boundingBoxes;
     const pageListPromise = dataPromises.then(([contentStream]) => {
       const opList = new OperatorList(intent, sink);
 
@@ -360,8 +361,10 @@ class Page {
           task,
           resources: this.resources,
           operatorList: opList,
+          intent
         })
-        .then(function () {
+        .then(function (boundingBoxesByMCID) {
+          boundingBoxes = boundingBoxesByMCID;
           return opList;
         });
     });
@@ -374,6 +377,9 @@ class Page {
           annotations.length === 0 ||
           intent & RenderingIntentFlag.ANNOTATIONS_DISABLE
         ) {
+          if (intent & RenderingIntentFlag.OPLIST) {
+            pageOpList.addOp(OPS.save, boundingBoxes);
+          }
           pageOpList.flush(true);
           return { length: pageOpList.totalLength };
         }
@@ -417,6 +423,9 @@ class Page {
             pageOpList.addOpList(opList);
           }
           pageOpList.addOp(OPS.endAnnotations, []);
+          if (intent === 'oplist') {
+            pageOpList.addOp(OPS.save, boundingBoxes);
+          }
           pageOpList.flush(true);
           return { length: pageOpList.totalLength };
         });
@@ -1602,4 +1611,17 @@ class PDFDocument {
   }
 }
 
-export { Page, PDFDocument };
+class ExtendedPDFDocument extends PDFDocument{
+  constructor(pdfManager, arg) {
+    super(pdfManager, arg);
+  }
+
+  get structureTree() {
+    return shadow(this, 'structureTree', this.catalog.structureTree);
+  }
+}
+
+export {
+  Page,
+  ExtendedPDFDocument as PDFDocument,
+};
