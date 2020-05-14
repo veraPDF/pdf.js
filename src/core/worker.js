@@ -191,9 +191,10 @@ class WorkerMessageHandler {
         ]);
       }
 
-      const [numPages, fingerprints] = await Promise.all([
+      const [numPages, fingerprints, structureTree] = await Promise.all([
         pdfManager.ensureDoc("numPages"),
         pdfManager.ensureDoc("fingerprints"),
+        pdfManager.ensureDoc('structureTree'),
       ]);
 
       // Get htmlForXfa after numPages to avoid to create HTML twice.
@@ -201,7 +202,7 @@ class WorkerMessageHandler {
         ? await pdfManager.ensureDoc("htmlForXfa")
         : null;
 
-      return { numPages, fingerprints, htmlForXfa };
+      return { numPages, fingerprints, htmlForXfa, structureTree };
     }
 
     function getPdfManager(data, evaluatorOptions, enableXfa) {
