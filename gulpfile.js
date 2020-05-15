@@ -727,6 +727,15 @@ function buildDefaultPreferences(defines, dir) {
   );
 }
 
+gulp.task('buildnumber-custom', function (done) {
+  console.log();
+  console.log('### Getting custom build number');
+
+  gulp.src('./version.json')
+    .pipe(gulp.dest(BUILD_DIR))
+    .on('end', done);
+});
+
 function getDefaultPreferences(dir) {
   const { AppOptions, OptionKind } = require("./" +
     DEFAULT_PREFERENCES_DIR +
@@ -735,6 +744,10 @@ function getDefaultPreferences(dir) {
 
   return AppOptions.getAll(OptionKind.PREFERENCE);
 }
+
+gulp.task('bundle', gulp.series('buildnumber-custom', function () {
+  return createBundle(DEFINES).pipe(gulp.dest(BUILD_DIR));
+}));
 
 gulp.task("locale", function () {
   const VIEWER_LOCALE_OUTPUT = "web/locale/";
@@ -882,7 +895,7 @@ function buildGeneric(defines, dir) {
 gulp.task(
   "generic",
   gulp.series(
-    createBuildNumber,
+    "buildnumber-custom",
     "locale",
     function scriptingGeneric() {
       const defines = builder.merge(DEFINES, { GENERIC: true });
@@ -957,7 +970,7 @@ function buildComponents(defines, dir) {
 
 gulp.task(
   "components",
-  gulp.series(createBuildNumber, function createComponents() {
+  gulp.series("buildnumber-custom", function createComponents() {
     console.log();
     console.log("### Creating generic components");
     const defines = builder.merge(DEFINES, { COMPONENTS: true, GENERIC: true });
@@ -968,7 +981,7 @@ gulp.task(
 
 gulp.task(
   "components-legacy",
-  gulp.series(createBuildNumber, function createComponentsLegacy() {
+  gulp.series("buildnumber-custom", function createComponentsLegacy() {
     console.log();
     console.log("### Creating generic (legacy) components");
     const defines = builder.merge(DEFINES, {
@@ -1221,7 +1234,7 @@ function preprocessDefaultPreferences(content) {
 gulp.task(
   "mozcentral",
   gulp.series(
-    createBuildNumber,
+    "buildnumber-custom",
     function scriptingMozcentral() {
       const defines = builder.merge(DEFINES, { MOZCENTRAL: true });
       return buildDefaultPreferences(defines, "mozcentral/");
@@ -1311,7 +1324,7 @@ gulp.task(
 gulp.task(
   "chromium",
   gulp.series(
-    createBuildNumber,
+    "buildnumber-custom",
     "locale",
     function scriptingChromium() {
       const defines = builder.merge(DEFINES, {
