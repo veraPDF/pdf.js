@@ -94,8 +94,6 @@ const ENV_TARGETS = [
 const AUTOPREFIXER_CONFIG = {
   overrideBrowserslist: ENV_TARGETS,
 };
-// Default Babel targets used for generic, components, minified-pre
-const BABEL_TARGETS = ENV_TARGETS.join(", ");
 
 const BABEL_PRESET_ENV_OPTS = Object.freeze({
   corejs: "3.37.1",
@@ -187,6 +185,7 @@ function createWebpackAlias(defines) {
     pdfjs: "src",
     "pdfjs-web": "web",
     "pdfjs-lib": "web/pdfjs",
+    "pdfjs-fitCurve": "src/display/editor/fit_curve",
     "fluent-bundle": "node_modules/@fluent/bundle/esm/index.js",
     "fluent-dom": "node_modules/@fluent/dom/esm/index.js",
   };
@@ -377,7 +376,6 @@ function createWebpackConfig(
           options: {
             presets: babelPresets,
             plugins: babelPlugins,
-            targets: BABEL_TARGETS,
           },
         },
       ],
@@ -896,7 +894,8 @@ gulp.task("locale", function () {
   subfolders.sort();
   const viewerOutput = Object.create(null);
   const locales = [];
-  for (const locale of subfolders) {
+  for (let i = 0; i < subfolders.length; i++) {
+    const locale = subfolders[i];
     const dirPath = L10N_DIR + locale;
     if (!checkDir(dirPath)) {
       continue;
@@ -1301,6 +1300,7 @@ gulp.task(
       const MOZCENTRAL_DIR = BUILD_DIR + "mozcentral/",
         MOZCENTRAL_EXTENSION_DIR = MOZCENTRAL_DIR + "browser/extensions/pdfjs/",
         MOZCENTRAL_CONTENT_DIR = MOZCENTRAL_EXTENSION_DIR + "content/",
+        FIREFOX_EXTENSION_DIR = "extensions/firefox/",
         MOZCENTRAL_L10N_DIR =
           MOZCENTRAL_DIR + "browser/locales/en-US/pdfviewer/";
 
