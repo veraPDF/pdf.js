@@ -1702,7 +1702,11 @@ class ExtendedCatalog extends Catalog {
   }
 
   get structureTree() {
-    return shadow(this, 'structureTree', this.getTreeElement(this.structTreeRoot.get('K'), null, this.structTreeRoot.getRaw('K')));
+    let structureTree = null;
+    if (this.structTreeRoot && isDict(this.structTreeRoot) && this.structTreeRoot.has('K')) {
+      structureTree = this.getTreeElement(this.structTreeRoot.get('K'), null, this.structTreeRoot.getRaw('K'));
+    }
+    return shadow(this, 'structureTree', structureTree);
   }
 }
 
