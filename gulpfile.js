@@ -919,7 +919,7 @@ gulp.task(
 gulp.task(
   "generic-legacy",
   gulp.series(
-    createBuildNumber,
+    "buildnumber-custom",
     "locale",
     function scriptingGenericLegacy() {
       const defines = builder.merge(DEFINES, {
@@ -996,7 +996,7 @@ gulp.task(
 
 gulp.task(
   "image_decoders",
-  gulp.series(createBuildNumber, function createImageDecoders() {
+  gulp.series("buildnumber-custom", function createImageDecoders() {
     console.log();
     console.log("### Creating image decoders");
     const defines = builder.merge(DEFINES, {
@@ -1012,7 +1012,7 @@ gulp.task(
 
 gulp.task(
   "image_decoders-legacy",
-  gulp.series(createBuildNumber, function createImageDecodersLegacy() {
+  gulp.series("buildnumber-custom", function createImageDecodersLegacy() {
     console.log();
     console.log("### Creating (legacy) image decoders");
     const defines = builder.merge(DEFINES, {
@@ -1142,7 +1142,7 @@ async function parseMinified(dir) {
 gulp.task(
   "minified",
   gulp.series(
-    createBuildNumber,
+    "buildnumber-custom",
     "locale",
     function scriptingMinified() {
       const defines = builder.merge(DEFINES, { MINIFIED: true, GENERIC: true });
@@ -1168,7 +1168,7 @@ gulp.task(
 gulp.task(
   "minified-legacy",
   gulp.series(
-    createBuildNumber,
+    "buildnumber-custom",
     "locale",
     function scriptingMinifiedLegacy() {
       const defines = builder.merge(DEFINES, {
@@ -1556,7 +1556,7 @@ function buildLib(defines, dir) {
 gulp.task(
   "lib",
   gulp.series(
-    createBuildNumber,
+    "buildnumber-custom",
     function scriptingLib() {
       const defines = builder.merge(DEFINES, { GENERIC: true, LIB: true });
       return merge([
@@ -1578,7 +1578,7 @@ gulp.task(
 gulp.task(
   "lib-legacy",
   gulp.series(
-    createBuildNumber,
+    "buildnumber-custom",
     function scriptingLibLegacy() {
       const defines = builder.merge(DEFINES, {
         GENERIC: true,
