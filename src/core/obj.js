@@ -2366,7 +2366,7 @@ class ExtendedCatalog extends Catalog {
 
     if (isDict(el) && el.has('K')) {
       return {
-        name: stringToUTF8String(el.get('S').name),
+        name: el.has('S') ? stringToUTF8String(el.get('S').name) : null,
         children: this.getTreeElement(el.get('K'), page, el.getRaw('K')),
         ref: ref
       }

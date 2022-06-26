@@ -757,7 +757,7 @@ gulp.task(
 // older HTML5 browsers.
 gulp.task(
   "generic-es5",
-  gulp.series("buildnumber", "default_preferences", "locale", function () {
+  gulp.series("buildnumber-custom", "default_preferences", "locale", function () {
     console.log();
     console.log("### Creating generic (ES5) viewer");
     var defines = builder.merge(DEFINES, { GENERIC: true, SKIP_BABEL: false });
@@ -819,7 +819,7 @@ gulp.task(
 
 gulp.task(
   "image_decoders",
-  gulp.series("buildnumber", function () {
+  gulp.series("buildnumber-custom", function () {
     console.log();
     console.log("### Creating image decoders");
     var defines = builder.merge(DEFINES, {
@@ -874,7 +874,7 @@ function buildMinified(defines, dir) {
 
 gulp.task(
   "minified-pre",
-  gulp.series("buildnumber", "default_preferences", "locale", function () {
+  gulp.series("buildnumber-custom", "default_preferences", "locale", function () {
     console.log();
     console.log("### Creating minified viewer");
     var defines = builder.merge(DEFINES, { MINIFIED: true, GENERIC: true });
@@ -885,7 +885,7 @@ gulp.task(
 
 gulp.task(
   "minified-es5-pre",
-  gulp.series("buildnumber", "default_preferences", "locale", function () {
+  gulp.series("buildnumber-custom", "default_preferences", "locale", function () {
     console.log();
     console.log("### Creating minified (ES5) viewer");
     var defines = builder.merge(DEFINES, {
@@ -1229,7 +1229,7 @@ function buildLib(defines, dir) {
 
 gulp.task(
   "lib",
-  gulp.series("buildnumber", "default_preferences", function () {
+  gulp.series("buildnumber-custom", "default_preferences", function () {
     var defines = builder.merge(DEFINES, { GENERIC: true, LIB: true });
 
     return buildLib(defines, "build/lib/");
@@ -1238,7 +1238,7 @@ gulp.task(
 
 gulp.task(
   "lib-es5",
-  gulp.series("buildnumber", "default_preferences", function () {
+  gulp.series("buildnumber-custom", "default_preferences", function () {
     var defines = builder.merge(DEFINES, {
       GENERIC: true,
       LIB: true,
