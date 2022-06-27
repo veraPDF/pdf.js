@@ -92,7 +92,13 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       //Right Bottom point is in text matrix after going through glyphs
       let [tx1, ty1] = [this.textState.textMatrix[4] + shift[0], this.textState.textMatrix[5] + shift[1]];
       //Top point can be calculated from base and height
-      let [tx2, ty2, tx3, ty3] = this.getTopPoints(tx0, ty0, this.textState.textMatrix[4] + shift[0], this.textState.textMatrix[5] + shift[1], height);
+      let [tx2, ty2, tx3, ty3] = this.getTopPoints(tx0, ty0, tx1, ty1, height);
+      if (this.textState.textMatrix[3] < 0) {
+        ty0 += height * this.textState.textMatrix[3];
+        ty1 += height * this.textState.textMatrix[3];
+        ty2 += height * this.textState.textMatrix[3];
+        ty3 += height * this.textState.textMatrix[3];
+      }
 
       //Apply transform matrix to bbox
       let [x0, y0] = Util.applyTransform([tx0, ty0], ctm);
@@ -565,7 +571,7 @@ var GraphicsState = (function GraphicsState() {
       this.h = null;
       this.move_x = 0;
       this.move_y = 0;
-      this.ctm = IDENTITY_MATRIX.slice();
+      //this.ctm = IDENTITY_MATRIX.slice();
       //clip state stays the same
     }
   };
