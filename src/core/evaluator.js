@@ -1711,6 +1711,7 @@ class PartialEvaluator {
             if (isValidName) {
               const localImage = localImageCache.getByName(name);
               if (localImage) {
+                boundingBoxCalculator.parseOperator(OPS.paintXObject, ["Image"]);
                 operatorList.addImageOps(
                   localImage.fn,
                   localImage.args,
@@ -1733,6 +1734,7 @@ class PartialEvaluator {
                 if (xobj instanceof Ref) {
                   const localImage = localImageCache.getByRef(xobj);
                   if (localImage) {
+                    boundingBoxCalculator.parseOperator(OPS.paintXObject, ["Image"]);
                     operatorList.addImageOps(
                       localImage.fn,
                       localImage.args,
@@ -1749,6 +1751,7 @@ class PartialEvaluator {
                     self.pageIndex
                   );
                   if (globalImage) {
+                    boundingBoxCalculator.parseOperator(OPS.paintXObject, ["Image"]);
                     operatorList.addDependency(globalImage.objId);
                     operatorList.addImageOps(
                       globalImage.fn,
