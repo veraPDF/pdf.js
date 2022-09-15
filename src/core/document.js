@@ -342,7 +342,7 @@ class Page {
     });
 
     const dataPromises = Promise.all([contentStreamPromise, resourcesPromise]);
-    let boundingBoxes;
+    let boundingBoxes, positionByOperationIndex;
     const pageListPromise = dataPromises.then(([contentStream]) => {
       const opList = new OperatorList(intent, sink);
 
@@ -363,8 +363,9 @@ class Page {
           operatorList: opList,
           intent
         })
-        .then(function (boundingBoxesByMCID) {
+        .then(function ([boundingBoxesByMCID, operationArray]) {
           boundingBoxes = boundingBoxesByMCID;
+          positionByOperationIndex = operationArray
           return opList;
         });
     });
@@ -378,7 +379,8 @@ class Page {
           intent & RenderingIntentFlag.ANNOTATIONS_DISABLE
         ) {
           if (intent & RenderingIntentFlag.OPLIST) {
-            pageOpList.addOp(OPS.save, boundingBoxes);
+            pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
+            pageOpList.addOp(OPS.boundingBoxes, boundingBoxes);
           }
           pageOpList.flush(true);
           return { length: pageOpList.totalLength };
@@ -395,7 +397,8 @@ class Page {
           if (
             intentAny ||
             (intentDisplay && annotation.mustBeViewed(annotationStorage)) ||
-            (intentPrint && annotation.mustBePrinted(annotationStorage))
+            (intentPrint && annotation.mustBePrinted(annotationStorage)) ||
+            intent & RenderingIntentFlag.OPLIST
           ) {
             opListPromises.push(
               annotation
@@ -513,7 +516,8 @@ class Page {
         if (
           intentAny ||
           (intentDisplay && annotation.viewable) ||
-          (intentPrint && annotation.printable)
+          (intentPrint && annotation.printable) ||
+          intent & RenderingIntentFlag.OPLIST
         ) {
           annotationsData.push(annotation.data);
         }
