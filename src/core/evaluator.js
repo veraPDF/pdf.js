@@ -1700,6 +1700,7 @@ class PartialEvaluator {
         }
         let args = operation.args;
         let fn = operation.fn;
+        boundingBoxCalculator.incrementOperation(fn);
 
         switch (fn | 0) {
           case OPS.paintXObject:
@@ -2252,10 +2253,11 @@ class PartialEvaluator {
       // Some PDFs don't close all restores inside object/form.
       // Closing those for them.
       closePendingRestoreOPS();
-      // Add extra data about marked content as last element of operator list
-      // with corresponding function 'save', because it won't affect on
+      // Add extra data about marked content and glyphs position as last elements
+      // of operator list with corresponding custom functions 'operationPosition'(100)
+      // and 'boundingBoxes'(101), because it won't affect on
       // the process of rendering
-      resolve(boundingBoxCalculator.boundingBoxes);
+      resolve([boundingBoxCalculator.boundingBoxes, boundingBoxCalculator.operationArray]);
     }).catch(reason => {
       if (reason instanceof AbortException) {
         return;
