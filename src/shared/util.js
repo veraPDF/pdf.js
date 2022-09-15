@@ -344,6 +344,8 @@ const OPS = {
   constructPath: 91,
   setStrokeTransparent: 92,
   setFillTransparent: 93,
+  boundingBoxes: 100,
+  operationPosition: 101
 };
 
 const PasswordResponses = {

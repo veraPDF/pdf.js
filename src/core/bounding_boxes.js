@@ -15,6 +15,8 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
     this.boundingBoxesStack = new BoundingBoxStack();
     this.boundingBoxes = {};
     this.ignoreCalculations = ignoreCalculations;
+    this.operationArray = [];
+    this.operationIndex = -1;
   }
 
   BoundingBoxesCalculator.prototype = {
@@ -62,6 +64,7 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       //Save before text matrix will be changed with going through glyphs
       let [tx0, ty0] = [this.textStateManager.state.textMatrix[4] + shift[0], this.textStateManager.state.textMatrix[5] + shift[1]];
 
+      let glyphsSize = [];
       for (let i = 0; i < glyphs.length; i++) {
         let glyph = glyphs[i];
         if (typeof glyph === "number") {
@@ -86,18 +89,25 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
             ty = w1 * this.textStateManager.state.fontSize + this.textStateManager.state.charSpacing + (glyph.isSpace ? this.textStateManager.state.wordSpacing : 0);
           }
         }
+        let [x, y] = [this.textStateManager.state.textMatrix[4] + shift[0], this.textStateManager.state.textMatrix[5] + shift[1]];
         this.textStateManager.state.translateTextMatrix(tx, ty);
+        if (typeof glyph !== "number") {
+          glyphsSize.push([x, y, this.textStateManager.state.textMatrix[4] + shift[0], this.textStateManager.state.textMatrix[5] + shift[1]]);
+        }
       }
 
       //Right Bottom point is in text matrix after going through glyphs
       let [tx1, ty1] = [this.textStateManager.state.textMatrix[4] + shift[0], this.textStateManager.state.textMatrix[5] + shift[1]];
       //Top point can be calculated from base and height
       let [tx2, ty2, tx3, ty3] = this.getTopPoints(tx0, ty0, tx1, ty1, height);
+      glyphsSize = glyphsSize.map(glyphSize => [...glyphSize, ...this.getTopPoints(...glyphSize, height)])
       if (this.textStateManager.state.textMatrix[3] < 0) {
         ty0 += height * this.textStateManager.state.textMatrix[3];
         ty1 += height * this.textStateManager.state.textMatrix[3];
         ty2 += height * this.textStateManager.state.textMatrix[3];
         ty3 += height * this.textStateManager.state.textMatrix[3];
+        glyphsSize = glyphsSize.map(glyphSize => [...glyphSize.map((point, index) =>
+          index % 2 === 0 ? point : (point + height * this.textStateManager.state.textMatrix[3]))]);
       }
 
       //Apply transform matrix to bbox
@@ -105,12 +115,31 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       let [x1, y1] = Util.applyTransform([tx1, ty1], ctm);
       let [x2, y2] = Util.applyTransform([tx2, ty2], ctm);
       let [x3, y3] = Util.applyTransform([tx3, ty3], ctm);
+      glyphsSize = glyphsSize.map(glyphSize => [
+        ...Util.applyTransform([glyphSize[0], glyphSize[1]], ctm),
+        ...Util.applyTransform([glyphSize[2], glyphSize[3]], ctm),
+        ...Util.applyTransform([glyphSize[4], glyphSize[5]], ctm),
+        ...Util.applyTransform([glyphSize[6], glyphSize[7]], ctm),
+      ]);
+      let minX, maxX, minY, maxY;
+      let glyphsPos = [];
+      glyphsSize.forEach(glyphSize => {
+        let xPoints = [...glyphSize].filter((point, index) => index % 2 === 0);
+        let yPoints = [...glyphSize].filter((point, index) => index % 2 !== 0);
+        minX = Math.min(...xPoints);
+        maxX = Math.max(...xPoints);
 
-      let minX = Math.min(x0, x1, x2, x3);
-      let maxX = Math.max(x0, x1, x2, x3);
+        minY = Math.min(...yPoints);
+        maxY = Math.max(...yPoints);
+        glyphsPos.push([minX, minY, maxX - minX, maxY - minY]);
+      })
+      this.operationArray[this.operationIndex] = glyphsPos;
 
-      let minY = Math.min(y0, y1, y2, y3);
-      let maxY = Math.max(y0, y1, y2, y3);
+      minX = Math.min(x0, x1, x2, x3);
+      maxX = Math.max(x0, x1, x2, x3);
+
+      minY = Math.min(y0, y1, y2, y3);
+      maxY = Math.max(y0, y1, y2, y3);
 
       this.boundingBoxesStack.save(minX, minY, maxX - minX, maxY - minY);
     },
@@ -543,6 +572,13 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       this.textStateManager.state.fontMatrix = translated.font.fontMatrix;
       this.textStateManager.state.font = translated.font;
     },
+
+    incrementOperation: function BoundingBoxesCalculator_incrementOperation(fn) {
+      if (this.ignoreCalculations) {
+        return;
+      }
+      this.operationIndex++;
+    }
   };
 
   return BoundingBoxesCalculator;

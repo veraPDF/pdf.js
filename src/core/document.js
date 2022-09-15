@@ -506,7 +506,7 @@ class Page {
       );
     }
 
-    let boundingBoxes;
+    let boundingBoxes, positionByOperationIndex;
     const pageListPromise = Promise.all([
       contentStreamPromise,
       resourcesPromise,
@@ -528,10 +528,11 @@ class Page {
           task,
           resources: this.resources,
           operatorList: opList,
-          intent
+          intent,
         })
-        .then(function (boundingBoxesByMCID) {
+        .then(function ([boundingBoxesByMCID, operationArray]) {
           boundingBoxes = boundingBoxesByMCID;
+          positionByOperationIndex = operationArray;
           return opList;
         });
     });
@@ -570,7 +571,8 @@ class Page {
         intent & RenderingIntentFlag.ANNOTATIONS_DISABLE
       ) {
         if (intent & RenderingIntentFlag.OPLIST) {
-          pageOpList.addOp(OPS.save, boundingBoxes);
+          pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
+          pageOpList.addOp(OPS.boundingBoxes, boundingBoxes);
         }
         pageOpList.flush(/* lastChunk = */ true);
         return { length: pageOpList.totalLength };
@@ -590,7 +592,8 @@ class Page {
           (intentDisplay &&
             annotation.mustBeViewed(annotationStorage, renderForms) &&
             annotation.mustBeViewedWhenEditing(isEditing, modifiedIds)) ||
-          (intentPrint && annotation.mustBePrinted(annotationStorage))
+          (intentPrint && annotation.mustBePrinted(annotationStorage)) ||
+          intent & RenderingIntentFlag.OPLIST
         ) {
           opListPromises.push(
             annotation
@@ -625,7 +628,7 @@ class Page {
           form ||= separateForm;
           canvas ||= separateCanvas;
         }
-        if (intent === 'oplist') {
+        if (intent === "oplist") {
           pageOpList.addOp(OPS.save, boundingBoxes);
         }
         pageOpList.flush(
@@ -725,7 +728,11 @@ class Page {
       // Get the annotation even if it's hidden because
       // JS can change its display.
       const isVisible = intentAny || (intentDisplay && annotation.viewable);
-      if (isVisible || (intentPrint && annotation.printable)) {
+      if (
+        isVisible ||
+        (intentPrint && annotation.printable) ||
+        intent & RenderingIntentFlag.OPLIST
+      ) {
         annotationsData.push(annotation.data);
       }
 
@@ -1942,17 +1949,14 @@ class PDFDocument {
   }
 }
 
-class ExtendedPDFDocument extends PDFDocument{
+class ExtendedPDFDocument extends PDFDocument {
   constructor(pdfManager, arg) {
     super(pdfManager, arg);
   }
 
   get structureTree() {
-    return shadow(this, 'structureTree', this.catalog.structureTree);
+    return shadow(this, "structureTree", this.catalog.structureTree);
   }
 }
 
-export {
-  Page,
-  ExtendedPDFDocument as PDFDocument,
-};
+export { Page, ExtendedPDFDocument as PDFDocument };
