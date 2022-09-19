@@ -426,7 +426,7 @@ class Page {
             pageOpList.addOpList(opList);
           }
           pageOpList.addOp(OPS.endAnnotations, []);
-          if (intent === 'oplist') {
+          if (intent & RenderingIntentFlag.OPLIST) {
             pageOpList.addOp(OPS.save, boundingBoxes);
           }
           pageOpList.flush(true);
