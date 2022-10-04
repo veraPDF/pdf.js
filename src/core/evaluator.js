@@ -4841,7 +4841,7 @@ class TextState {
     this.fontSize = 0;
     this.loadedName = null;
     this.font = null;
-    this.fontMatrix = FONT_IDENTITY_MATRIX;
+    this.fontMatrix = FONT_IDENTITY_MATRIX.slice();
     this.textMatrix = IDENTITY_MATRIX.slice();
     this.textLineMatrix = IDENTITY_MATRIX.slice();
     this.charSpacing = 0;
@@ -4890,9 +4890,9 @@ class TextState {
 
   clone() {
     const clone = Object.create(this);
-    clone.textMatrix = this.textMatrix.slice();
-    clone.textLineMatrix = this.textLineMatrix.slice();
-    clone.fontMatrix = this.fontMatrix.slice();
+    clone.textMatrix = this.textMatrix ? this.textMatrix.slice() : IDENTITY_MATRIX.slice();
+    clone.textLineMatrix = this.textLineMatrix ? this.textLineMatrix.slice() : IDENTITY_MATRIX.slice();
+    clone.fontMatrix = this.fontMatrix ? this.fontMatrix.slice() : FONT_IDENTITY_MATRIX.slice();
     return clone;
   }
 }
