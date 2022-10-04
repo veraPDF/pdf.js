@@ -628,7 +628,7 @@ class Page {
           form ||= separateForm;
           canvas ||= separateCanvas;
         }
-        if (intent === "oplist") {
+        if (intent & RenderingIntentFlag.OPLIST) {
           pageOpList.addOp(OPS.save, boundingBoxes);
         }
         pageOpList.flush(

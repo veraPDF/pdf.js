@@ -68,8 +68,8 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       for (let i = 0; i < glyphs.length; i++) {
         let glyph = glyphs[i];
         if (typeof glyph === "number") {
-          if (this.textState.font.vertical) {
-            ty = -glyph / 1000 * this.textState.fontSize * this.textState.textHScale;
+          if (this.textStateManager.state.font.vertical) {
+            ty = -glyph / 1000 * this.textStateManager.state.fontSize * this.textStateManager.state.textHScale;
           } else {
             tx = -glyph / 1000 * this.textStateManager.state.fontSize * this.textStateManager.state.textHScale;
           }
