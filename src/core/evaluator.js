@@ -25,6 +25,7 @@ import {
   info,
   isArrayEqual,
   OPS,
+  RenderingIntentFlag,
   shadow,
   stringToPDFString,
   TextRenderingMode,
@@ -1653,8 +1654,8 @@ class PartialEvaluator {
     }
 
     var boundingBoxCalculator = new BoundingBoxesCalculator(!(intent & RenderingIntentFlag.OPLIST));
-    const self = this;
-    const xref = this.xref;
+    var self = this;
+    var xref = this.xref;
     let parsingText = false;
     const localImageCache = new LocalImageCache();
     const localColorSpaceCache = new LocalColorSpaceCache();

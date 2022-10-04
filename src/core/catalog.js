@@ -1610,7 +1610,7 @@ class ExtendedCatalog extends Catalog {
   }
 
   get structTreeRoot() {
-    const structTreeRoot = this.catDict.get('StructTreeRoot');
+    const structTreeRoot = this._catDict.get('StructTreeRoot');
     if (!isDict(structTreeRoot)) {
       return null;
     }
