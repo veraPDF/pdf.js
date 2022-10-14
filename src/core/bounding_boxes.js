@@ -50,22 +50,23 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       let ascent = (this.textStateManager.state.font.ascent || 1) * this.textStateManager.state.fontSize;
       let rise = this.textStateManager.state.textRise * this.textStateManager.state.fontSize;
 
-      //Left Bottom point of text bbox
-      //Save before text matrix will be changed with going through glyphs
-      let [tx0, ty0] = Util.applyTransform([0, descent + rise], this.textStateManager.state.textMatrix);
-
-      //Calculate transformed height and shift to place whole glyph inside of bbox
-      let shift = [tx0 - this.textStateManager.state.textMatrix[4], ty0 - this.textStateManager.state.textMatrix[5]];
-
-      let height = Util.applyTransform([0, ascent - descent], this.textStateManager.state.textMatrix);
+      let tx0, ty0, shift, height;
+      if (!this.textStateManager.state.font.vertical) {
+        //Left Bottom point of text bbox
+        //Save before text matrix will be changed with going through glyphs
+        [tx0, ty0] = Util.applyTransform([0, descent + rise], this.textStateManager.state.textMatrix);
+        //Calculate transformed height and shift to place whole glyph inside of bbox
+        shift = [tx0 - this.textStateManager.state.textMatrix[4], ty0 - this.textStateManager.state.textMatrix[5]];
+        height = Util.applyTransform([0, ascent - descent], this.textStateManager.state.textMatrix);        
+      } else {
+        [tx0, ty0] = Util.applyTransform([-this.textStateManager.state.fontSize / 2, rise], this.textStateManager.state.textMatrix);
+        shift = [tx0 - this.textStateManager.state.textMatrix[4], ty0 - this.textStateManager.state.textMatrix[5]];
+        height = Util.applyTransform([ascent - descent, 0], this.textStateManager.state.textMatrix);        
+      }
       height[0] -= this.textStateManager.state.textMatrix[4];
       height[1] -= this.textStateManager.state.textMatrix[5];
       height = Math.sqrt(height[0] * height[0] + height[1] * height[1]);
-      if (this.textStateManager.state.font.vertical) {
-        height *= this.textStateManager.state.textMatrix[0] < 0 && this.textStateManager.state.textMatrix[3] >= 0 ? -1 : 1;
-      } else {
-        height *= this.textStateManager.state.textMatrix[3] < 0 && this.textStateManager.state.textMatrix[0] >= 0 ? -1 : 1;
-      }
+      height *= (this.textStateManager.state.textMatrix[0] * this.textStateManager.state.textMatrix[3] < 0) ? -1 : 1;
 
       let glyphsSize = [];
       for (let i = 0; i < glyphs.length; i++) {
@@ -89,11 +90,11 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
               this.textStateManager.state.textHScale;
           } else {
             let w1 = glyphWidth * (this.textStateManager.state.fontMatrix ? this.textStateManager.state.fontMatrix[0] : 1 / 1000);
-            ty = w1 * this.textStateManager.state.fontSize + this.textStateManager.state.charSpacing + (glyph.isSpace ? this.textStateManager.state.wordSpacing : 0);
+            ty = w1 * this.textStateManager.state.fontSize - this.textStateManager.state.charSpacing - (glyph.isSpace ? this.textStateManager.state.wordSpacing : 0);
           }
         }
         let [x, y] = [this.textStateManager.state.textMatrix[4] + shift[0], this.textStateManager.state.textMatrix[5] + shift[1]];
-        this.textStateManager.state.translateTextMatrix(tx, ty);
+        this.textStateManager.state.translateTextMatrix(tx, -ty);
         if (typeof glyph !== "number") {
           glyphsSize.push([x, y, this.textStateManager.state.textMatrix[4] + shift[0], this.textStateManager.state.textMatrix[5] + shift[1]]);
         }
