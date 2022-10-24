@@ -1887,6 +1887,7 @@ class PartialEvaluator {
                 localColorSpaceCache,
               })
             );
+            boundingBoxCalculator.parseOperator(fn, args);
             return;
           case OPS.showText:
             if (!stateManager.state.font) {
@@ -1965,6 +1966,7 @@ class PartialEvaluator {
                   localColorSpaceCache,
                 })
                 .then(function (colorSpace) {
+                  boundingBoxCalculator.parseOperator(fn, args);
                   if (colorSpace) {
                     stateManager.state.fillColorSpace = colorSpace;
                   }
@@ -1991,6 +1993,7 @@ class PartialEvaluator {
                   localColorSpaceCache,
                 })
                 .then(function (colorSpace) {
+                  boundingBoxCalculator.parseOperator(fn, args);
                   if (colorSpace) {
                     stateManager.state.strokeColorSpace = colorSpace;
                   }
@@ -2162,6 +2165,7 @@ class PartialEvaluator {
                 throw reason;
               })
             );
+            boundingBoxCalculator.parseOperator(fn, args);
             return;
           case OPS.moveTo:
           case OPS.lineTo:
@@ -2258,7 +2262,7 @@ class PartialEvaluator {
       // of operator list with corresponding custom functions 'operationPosition'(100)
       // and 'boundingBoxes'(101), because it won't affect on
       // the process of rendering
-      resolve([boundingBoxCalculator.boundingBoxes, boundingBoxCalculator.operationArray]);
+      resolve([boundingBoxCalculator.boundingBoxes, boundingBoxCalculator.operationArray, boundingBoxCalculator.getNoMCIDBoundingBoxes()]);
     }).catch(reason => {
       if (reason instanceof AbortException) {
         return;
