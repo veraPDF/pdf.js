@@ -506,7 +506,7 @@ class Page {
       );
     }
 
-    let boundingBoxes, positionByOperationIndex;
+    let MCIDBoundingBoxes, positionByOperationIndex, noMCIDBoundingBoxes;
     const pageListPromise = Promise.all([
       contentStreamPromise,
       resourcesPromise,
@@ -530,9 +530,10 @@ class Page {
           operatorList: opList,
           intent,
         })
-        .then(function ([boundingBoxesByMCID, operationArray]) {
-          boundingBoxes = boundingBoxesByMCID;
+        .then(function ([boundingBoxesByMCID, operationArray, boundingBoxesWithoutMCID]) {
+          MCIDBoundingBoxes = boundingBoxesByMCID;
           positionByOperationIndex = operationArray;
+          noMCIDBoundingBoxes = boundingBoxesWithoutMCID;
           return opList;
         });
     });
@@ -572,7 +573,7 @@ class Page {
       ) {
         if (intent & RenderingIntentFlag.OPLIST) {
           pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
-          pageOpList.addOp(OPS.boundingBoxes, boundingBoxes);
+          pageOpList.addOp(OPS.boundingBoxes, [MCIDBoundingBoxes, noMCIDBoundingBoxes]);
         }
         pageOpList.flush(/* lastChunk = */ true);
         return { length: pageOpList.totalLength };
@@ -629,7 +630,7 @@ class Page {
           canvas ||= separateCanvas;
         }
         if (intent & RenderingIntentFlag.OPLIST) {
-          pageOpList.addOp(OPS.save, boundingBoxes);
+          pageOpList.addOp(OPS.save, [MCIDBoundingBoxes, noMCIDBoundingBoxes]);
         }
         pageOpList.flush(
           /* lastChunk = */ true,
