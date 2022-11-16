@@ -406,7 +406,7 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       }
 
       if (fn !== OPS.markPoint && fn !== OPS.markPointProps &&
-        fn != OPS.beginMarkedContent && fn != OPS.beginMarkedContentProps) {
+        fn !== OPS.beginMarkedContent && fn !== OPS.beginMarkedContentProps) {
         this.boundingBoxesStack.inc();
       }
 
