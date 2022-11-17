@@ -12,7 +12,7 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
     this.textStateManager = new StateManager(new TextState());
     this.graphicsStateManager = new StateManager(new GraphicsState());
     this.clipping = false;
-    this.boundingBoxesStack = new BoundingBoxStack();
+    this.boundingBoxesStack = new NoMCIDBoundingBoxStack();
     this.boundingBoxes = {};
     this.ignoreCalculations = ignoreCalculations;
     this.operationArray = [];
@@ -178,6 +178,11 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       let y = clippingBBox.y;
       let w = clippingBBox.w;
       let h = clippingBBox.h;
+
+      this.graphicsStateManager.state.x = null;
+      this.graphicsStateManager.state.y = null;
+      this.graphicsStateManager.state.w = null;
+      this.graphicsStateManager.state.h = null;
 
       this.boundingBoxesStack.save(x, y, w, h);
     },
@@ -378,6 +383,10 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       }
     },
 
+    getNoMCIDBoundingBoxes: function getNoMCIDBoundingBoxes() {
+      return this.boundingBoxesStack.get();
+    },
+
     getImageBoundingBox: function getImageBoundingBox() {
       let state = this.graphicsStateManager.state;
       let [x0, y0] = Util.applyTransform([0, 0], state.ctm);
@@ -394,6 +403,11 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
     parseOperator: function BoundingBoxesCalculator_parseOperator(fn, args) {
       if (this.ignoreCalculations) {
         return;
+      }
+
+      if (fn !== OPS.markPoint && fn !== OPS.markPointProps &&
+        fn !== OPS.beginMarkedContent && fn !== OPS.beginMarkedContentProps) {
+        this.boundingBoxesStack.inc();
       }
 
       switch (fn | 0) {
@@ -674,6 +688,85 @@ var BoundingBoxStack = (function BoundingBoxStack() {
   };
 
   return BoundingBoxStack;
+})();
+
+var NoMCIDBoundingBoxStack = (function NoMCIDBoundingBoxStack() {
+  function NoMCIDBoundingBoxStack() {
+    this.boundingBoxesStack = new BoundingBoxStack();
+    this.contentCounter = null;    
+    this.content = {};
+    this.pointer = {};
+  }
+
+  NoMCIDBoundingBoxStack.prototype = {
+    begin: function NoMCIDBoundingBoxStack_begin(mcid) {
+      if (!this.contentCounter || this.contentCounter.inMarkedContent !== false) {
+        this.inc(true);
+      } else {
+        const newContentItem = { parent: this.pointer, contentItems: [] };
+        this.pointer.contentItems.push(newContentItem);
+        this.pointer = newContentItem;
+      }
+      this.boundingBoxesStack.begin(mcid);
+    },
+
+    save: function NoMCIDBoundingBoxStack_save(x, y, w, h) {
+      if (this.pointer.contentItems) {
+        this.pointer.contentItems.push({ 
+          contentItem: { x, y, w, h }
+        });
+        this.pointer.final = true;
+      } else {
+        console.log('NoMCIDBoundingBoxStackError:', 'The pointer was in an invalid state, saved data will be lost');
+      }
+      this.boundingBoxesStack.save(x, y, w, h);
+    },
+
+    end: function NoMCIDBoundingBoxStack_end() {
+      const tempPointer = this.pointer;
+      this.pointer = tempPointer.parent || this.content;
+      delete tempPointer.parent;
+
+      if (this.pointer === this.content) {
+        this.contentCounter.inMarkedContent = null;
+        this.pointer = {};
+      }
+
+      return this.boundingBoxesStack.end();
+    },
+
+    inc: function NoMCIDBoundingBoxStack_inc(isMC = false) {
+      if (!this.contentCounter) {
+        this.contentCounter = { index: 0, inMarkedContent: !isMC }
+        this.content[this.contentCounter.index] = { parent: this.content, contentItems: [] };
+        this.pointer = this.content[this.contentCounter.index];
+      } else if (
+          this.contentCounter.inMarkedContent !== false && isMC || 
+          !!this.contentCounter.inMarkedContent === isMC && !Object.keys(this.pointer).length
+        ) {
+        delete this.content[this.contentCounter.index].parent;
+        this.contentCounter = { index: this.contentCounter.index + 1, inMarkedContent: !isMC }
+        this.content[this.contentCounter.index] = { parent: this.content, contentItems: [] };
+        this.pointer = this.content[this.contentCounter.index];
+      }
+    },
+
+    get: function NoMCIDBoundingBoxStack_get() {
+      try {
+        if (Object.keys(this.content).length && this.contentCounter) {
+          this.content[this.contentCounter.index].parent && delete this.content[this.contentCounter.index].parent;
+          const result = JSON.parse(JSON.stringify(this.content));
+          this.content[this.contentCounter.index].parent = this.content;
+          return result;
+        }
+        return {};
+      } catch (err) {
+        console.log('NoMCIDBoundingBoxStackError:', err.message || err);
+        return {};
+      }
+    },
+  };
+  return NoMCIDBoundingBoxStack;
 })();
 
 export {

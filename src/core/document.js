@@ -342,7 +342,7 @@ class Page {
     });
 
     const dataPromises = Promise.all([contentStreamPromise, resourcesPromise]);
-    let boundingBoxes, positionByOperationIndex;
+    let MCIDBoundingBoxes, positionByOperationIndex, noMCIDBoundingBoxes;
     const pageListPromise = dataPromises.then(([contentStream]) => {
       const opList = new OperatorList(intent, sink);
 
@@ -363,9 +363,10 @@ class Page {
           operatorList: opList,
           intent
         })
-        .then(function ([boundingBoxesByMCID, operationArray]) {
-          boundingBoxes = boundingBoxesByMCID;
-          positionByOperationIndex = operationArray
+        .then(function ([boundingBoxesByMCID, operationArray, boundingBoxesWithoutMCID]) {
+          MCIDBoundingBoxes = boundingBoxesByMCID;
+          positionByOperationIndex = operationArray;
+          noMCIDBoundingBoxes = boundingBoxesWithoutMCID;
           return opList;
         });
     });
@@ -380,7 +381,7 @@ class Page {
         ) {
           if (intent & RenderingIntentFlag.OPLIST) {
             pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
-            pageOpList.addOp(OPS.boundingBoxes, boundingBoxes);
+            pageOpList.addOp(OPS.boundingBoxes, [MCIDBoundingBoxes, noMCIDBoundingBoxes]);
           }
           pageOpList.flush(true);
           return { length: pageOpList.totalLength };
@@ -426,8 +427,8 @@ class Page {
             pageOpList.addOpList(opList);
           }
           pageOpList.addOp(OPS.endAnnotations, []);
-          if (intent & RenderingIntentFlag.OPLIST) {
-            pageOpList.addOp(OPS.save, boundingBoxes);
+          if (intent & RenderingIntentFlag.OPLIST) {            
+            pageOpList.addOp(OPS.save, [MCIDBoundingBoxes, noMCIDBoundingBoxes]);
           }
           pageOpList.flush(true);
           return { length: pageOpList.totalLength };
