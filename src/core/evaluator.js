@@ -2250,6 +2250,10 @@ class PartialEvaluator {
             // but doing so is meaningless without knowing the semantics.
             continue;
           case OPS.beginMarkedContentProps:
+            if (args[1] instanceof Name) {
+              const reference = resources.get("Properties").get(args[1].name);
+              args = [args[0], reference];
+            }
             boundingBoxCalculator.parseOperator(fn, args);
             if (!(args[0] instanceof Name)) {
               warn(`Expected name for beginMarkedContentProps arg0=${args[0]}`);
