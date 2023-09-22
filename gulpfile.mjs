@@ -94,6 +94,8 @@ const ENV_TARGETS = [
 const AUTOPREFIXER_CONFIG = {
   overrideBrowserslist: ENV_TARGETS,
 };
+// Default Babel targets used for generic, components, minified-pre
+const BABEL_TARGETS = ENV_TARGETS.join(", ");
 
 const BABEL_PRESET_ENV_OPTS = Object.freeze({
   corejs: "3.37.1",
@@ -376,6 +378,7 @@ function createWebpackConfig(
           options: {
             presets: babelPresets,
             plugins: babelPlugins,
+            targets: BABEL_TARGETS,
           },
         },
       ],
@@ -606,6 +609,26 @@ function createImageDecodersBundle(defines) {
     .pipe(tweakWebpackOutput("pdfjsImageDecoders"));
 }
 
+function createFitCurveBundle(defines) {
+  const fitCurveOutputName = "fit_curve.js";
+
+  const fitCurveFileConfig = createWebpackConfig(
+    defines,
+    {
+      filename: fitCurveOutputName,
+      library: {
+        type: "module",
+      },
+    },
+    {
+      disableVersionInfo: true,
+    }
+  );
+  return gulp
+    .src("src/display/editor/fit_curve.js")
+    .pipe(webpack2Stream(fitCurveFileConfig));
+}
+
 function createCMapBundle() {
   return gulp.src(["external/bcmaps/*.bcmap", "external/bcmaps/LICENSE"], {
     base: "external/bcmaps",
@@ -763,6 +786,7 @@ gulp.task("default", function (done) {
 });
 
 function createBuildNumber(done) {
+  /*
   console.log();
   console.log("### Getting extension build number");
 
@@ -806,6 +830,12 @@ function createBuildNumber(done) {
       });
     }
   );
+  */
+
+  console.log();
+  console.log("### Getting custom build number");
+
+  gulp.src("./version.json").pipe(gulp.dest(BUILD_DIR)).on("end", done);
 }
 
 function buildDefaultPreferences(defines, dir) {
@@ -881,6 +911,12 @@ function getDefaultFtl() {
   return stringBuf.join("\n");
 }
 
+function getDialogPolyfillCSS() {
+  return fs
+    .readFileSync("node_modules/dialog-polyfill/dist/dialog-polyfill.css")
+    .toString();
+}
+
 gulp.task("locale", function () {
   const VIEWER_LOCALE_OUTPUT = "web/locale/";
 
@@ -894,8 +930,7 @@ gulp.task("locale", function () {
   subfolders.sort();
   const viewerOutput = Object.create(null);
   const locales = [];
-  for (let i = 0; i < subfolders.length; i++) {
-    const locale = subfolders[i];
+  for (const locale of subfolders) {
     const dirPath = L10N_DIR + locale;
     if (!checkDir(dirPath)) {
       continue;
@@ -1066,7 +1101,7 @@ gulp.task(
 gulp.task(
   "generic-legacy",
   gulp.series(
-    "buildnumber-custom",
+    createBuildNumber,
     "locale",
     function scriptingGenericLegacy() {
       const defines = { ...DEFINES, GENERIC: true, SKIP_BABEL: false };
@@ -1147,7 +1182,7 @@ gulp.task(
 
 gulp.task(
   "image_decoders",
-  gulp.series("buildnumber-custom", function createImageDecoders() {
+  gulp.series(createBuildNumber, function createImageDecoders() {
     console.log();
     console.log("### Creating image decoders");
     const defines = { ...DEFINES, GENERIC: true, IMAGE_DECODERS: true };
@@ -1160,7 +1195,7 @@ gulp.task(
 
 gulp.task(
   "image_decoders-legacy",
-  gulp.series("buildnumber-custom", function createImageDecodersLegacy() {
+  gulp.series(createBuildNumber, function createImageDecodersLegacy() {
     console.log();
     console.log("### Creating (legacy) image decoders");
     const defines = {
@@ -1192,7 +1227,7 @@ function buildMinified(defines, dir) {
 gulp.task(
   "minified",
   gulp.series(
-    "buildnumber-custom",
+    createBuildNumber,
     "locale",
     function scriptingMinified() {
       const defines = { ...DEFINES, MINIFIED: true, GENERIC: true };
@@ -1217,7 +1252,7 @@ gulp.task(
 gulp.task(
   "minified-legacy",
   gulp.series(
-    "buildnumber-custom",
+    createBuildNumber,
     "locale",
     function scriptingMinifiedLegacy() {
       const defines = {
@@ -1300,7 +1335,6 @@ gulp.task(
       const MOZCENTRAL_DIR = BUILD_DIR + "mozcentral/",
         MOZCENTRAL_EXTENSION_DIR = MOZCENTRAL_DIR + "browser/extensions/pdfjs/",
         MOZCENTRAL_CONTENT_DIR = MOZCENTRAL_EXTENSION_DIR + "content/",
-        FIREFOX_EXTENSION_DIR = "extensions/firefox/",
         MOZCENTRAL_L10N_DIR =
           MOZCENTRAL_DIR + "browser/locales/en-US/pdfviewer/";
 
@@ -1536,6 +1570,7 @@ function buildLibHelper(bundleDefines, inputStream, outputDir) {
       "fluent-bundle": "../../../node_modules/@fluent/bundle/esm/index.js",
       "fluent-dom": "../../../node_modules/@fluent/dom/esm/index.js",
       "web-null_l10n": "../web/genericl10n.js",
+      "pdfjs-fitCurve": "./fit_curve",
     },
   };
   const licenseHeaderLibre = fs
@@ -1558,6 +1593,8 @@ function buildLib(defines, dir) {
       defines.SKIP_BABEL ? "lib/" : "lib-legacy/"
     ),
     DEFAULT_FTL: getDefaultFtl(),
+    DIALOG_POLYFILL_CSS:
+      defines.GENERIC && !defines.SKIP_BABEL ? getDialogPolyfillCSS() : "",
   };
 
   const inputStream = ordered([
@@ -1582,7 +1619,7 @@ function buildLib(defines, dir) {
 gulp.task(
   "lib",
   gulp.series(
-    "buildnumber-custom",
+    createBuildNumber,
     function scriptingLib() {
       const defines = { ...DEFINES, GENERIC: true, LIB: true };
       return ordered([
@@ -1607,7 +1644,7 @@ gulp.task(
 gulp.task(
   "lib-legacy",
   gulp.series(
-    "buildnumber-custom",
+    createBuildNumber,
     function scriptingLibLegacy() {
       const defines = {
         ...DEFINES,
@@ -1699,9 +1736,21 @@ function setTestEnv(done) {
   done();
 }
 
+gulp.task("dev-fitCurve", function createDevFitCurve() {
+  console.log();
+  console.log("### Building development fitCurve");
+
+  const defines = builder.merge(DEFINES, { GENERIC: true, TESTING: true });
+  const fitCurveDir = BUILD_DIR + "dev-fitCurve/";
+
+  rimraf.sync(fitCurveDir);
+
+  return createFitCurveBundle(defines).pipe(gulp.dest(fitCurveDir));
+});
+
 gulp.task(
   "test",
-  gulp.series(setTestEnv, "generic", "components", async function runTest() {
+  gulp.series(setTestEnv, "generic", "components","dev-fitCurve", async function runTest() {
     await runTests("unit");
     await runTests("browser");
     await runTests("integration");
@@ -1710,8 +1759,9 @@ gulp.task(
 
 gulp.task(
   "bottest",
-  gulp.series(setTestEnv, "generic", "components", async function runBotTest() {
+  gulp.series(setTestEnv, "generic", "components", "dev-fitCurve", async function runBotTest() {
     await runTests("unit", { bot: true });
+    await runTests("font", { bot: true });
     await runTests("browser", { bot: true });
     await runTests("integration");
   })
@@ -1719,7 +1769,7 @@ gulp.task(
 
 gulp.task(
   "xfatest",
-  gulp.series(setTestEnv, "generic", "components", async function runXfaTest() {
+  gulp.series(setTestEnv, "generic", "components", "dev-fitCurve", async function runXfaTest() {
     await runTests("unit");
     await runTests("browser", { xfaOnly: true });
     await runTests("integration");
@@ -1732,8 +1782,10 @@ gulp.task(
     setTestEnv,
     "generic",
     "components",
+    "dev-fitCurve",
     async function runBotXfaTest() {
       await runTests("unit", { bot: true });
+      await runTests("font", { bot: true });
       await runTests("browser", { bot: true, xfaOnly: true });
       await runTests("integration");
     }
@@ -1766,7 +1818,7 @@ gulp.task(
 
 gulp.task(
   "unittest",
-  gulp.series(setTestEnv, "generic", async function runUnitTest() {
+  gulp.series(setTestEnv, "generic", "dev-fitCurve", async function runUnitTest() {
     await runTests("unit");
   })
 );
@@ -2021,6 +2073,13 @@ gulp.task(
         "l10n/**/*.ftl",
         { ignoreInitial: false },
         gulp.series("locale")
+      );
+    },
+    function watchDevFitCurve() {
+      gulp.watch(
+        ["src/display/editor/*"],
+        { ignoreInitial: false },
+        gulp.series("dev-fitCurve")
       );
     },
     function watchDevSandbox() {
