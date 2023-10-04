@@ -1847,7 +1847,7 @@ class PartialEvaluator {
                   stateManager.state,
                   fallbackFontDict
                 )
-                .then(function (translated) {                  
+                .then(function (translated) {
                   boundingBoxCalculator.parseOperator(OPS.setFont, [fontSize, translated]);
                   operatorList.addDependency(translated.loadedName);
                   operatorList.addOp(OPS.setFont, [translated.loadedName, fontSize]);
