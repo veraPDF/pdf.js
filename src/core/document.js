@@ -630,7 +630,11 @@ class Page {
           canvas ||= separateCanvas;
         }
         if (intent & RenderingIntentFlag.OPLIST) {
-          pageOpList.addOp(OPS.save, [MCIDBoundingBoxes, noMCIDBoundingBoxes]);
+          pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
+          pageOpList.addOp(OPS.boundingBoxes, [
+            MCIDBoundingBoxes,
+            noMCIDBoundingBoxes,
+          ]);
         }
         pageOpList.flush(
           /* lastChunk = */ true,
