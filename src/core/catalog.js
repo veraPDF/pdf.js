@@ -1591,6 +1591,7 @@ class ExtendedCatalog extends Catalog {
     super(pdfManager, xref);
 
     this.pages = this.getPages(this.toplevelPagesDict.get('Kids'));
+    this.roleMap = this.getRoleMap(this.structTreeRoot);
   }
 
   _convertStructToObject(struct) {
@@ -1629,8 +1630,12 @@ class ExtendedCatalog extends Catalog {
     }
 
     if (isDict(el) && el.has('K')) {
+      let name = el.get('S').name;
+      let isRoleMapped = this.roleMap.get(name) !== undefined;
+      let roleName = isRoleMapped ? this.roleMap.get(name).name : name;
       return {
-        name: el.has('S') ? stringToUTF8String(el.get('S').name) : null,
+        name: el.has('S') ? stringToUTF8String(name) : null,
+        roleName: el.has('S') ? stringToUTF8String(roleName) : null,
         children: this.getTreeElement(el.get('K'), page, el.getRaw('K')),
         ref: ref
       }
@@ -1699,6 +1704,10 @@ class ExtendedCatalog extends Catalog {
       }
     });
     return pagesArray;
+  }
+
+  getRoleMap(tree) {
+    return tree !== null ? tree.get('RoleMap') : new Map();
   }
 
   get structureTree() {
