@@ -1801,12 +1801,12 @@ class ExtendedCatalog extends Catalog {
     }
 
     if (isDict(el) && el.has('K')) {
-      let name = el.get('S').name;
+      let name = el.has('S') ? el.get('S').name : null;
       let isRoleMapped = this.roleMap.get(name) !== undefined;
       let roleName = isRoleMapped ? this.roleMap.get(name).name : name;
       return {
-        name: el.has('S') ? stringToUTF8String(name) : null,
-        roleName: el.has('S') ? stringToUTF8String(roleName) : null,
+        name: name ? stringToUTF8String(name) : null,
+        roleName: roleName ? stringToUTF8String(roleName) : null,
         children: this.getTreeElement(el.get('K'), page, el.getRaw('K')),
         ref: ref
       }
@@ -1878,7 +1878,7 @@ class ExtendedCatalog extends Catalog {
   }
 
   getRoleMap(tree) {
-    return tree !== null ? tree.get('RoleMap') : new Map();
+    return tree !== null && isDict(tree) && tree.has('RoleMap') ? tree.get('RoleMap') : new Map();
   }
 
   get structureTree() {
