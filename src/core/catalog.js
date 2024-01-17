@@ -1802,14 +1802,20 @@ class ExtendedCatalog extends Catalog {
 
     if (isDict(el) && el.has('K')) {
       let name = el.has('S') ? el.get('S').name : null;
-      let isRoleMapped = this.roleMap.get(name) !== undefined;
-      let roleName = isRoleMapped ? this.roleMap.get(name).name : name;
+      let namespace = el.has('NS') ? el.get('NS') : null;
+      let roleNameNS = isDict(namespace) && namespace.has('RoleMapNS') ? namespace.get('RoleMapNS') : null;
+      let roleNameNSArray = isDict(roleNameNS) && roleNameNS.has(name) ? roleNameNS.get(name) : null;
+
+      let roleName_v1 = this.roleMap.get(name) !== undefined ? this.roleMap.get(name).name : null;
+      let roleName_v2 = roleNameNSArray !== null && roleNameNSArray[0].hasOwnProperty('name') ? roleNameNSArray[0].name : null;
+      let roleName = roleName_v1 || roleName_v2 || name;
+
       return {
         name: name ? stringToUTF8String(name) : null,
         roleName: roleName ? stringToUTF8String(roleName) : null,
         children: this.getTreeElement(el.get('K'), page, el.getRaw('K')),
         ref: ref
-      }
+      };
     }
 
     if (isDict(el) && el.has('Obj')) {
@@ -1891,4 +1897,3 @@ class ExtendedCatalog extends Catalog {
 }
 
 export { ExtendedCatalog as Catalog };
-
