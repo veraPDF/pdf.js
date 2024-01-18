@@ -1802,13 +1802,7 @@ class ExtendedCatalog extends Catalog {
 
     if (isDict(el) && el.has('K')) {
       let name = el.has('S') ? el.get('S').name : null;
-      let namespace = el.has('NS') ? el.get('NS') : null;
-      let roleNameNS = isDict(namespace) && namespace.has('RoleMapNS') ? namespace.get('RoleMapNS') : null;
-      let roleNameNSArray = isDict(roleNameNS) && roleNameNS.has(name) ? roleNameNS.get(name) : null;
-
-      let roleName_v1 = this.roleMap.get(name) !== undefined ? this.roleMap.get(name).name : null;
-      let roleName_v2 = roleNameNSArray !== null && roleNameNSArray[0].hasOwnProperty('name') ? roleNameNSArray[0].name : null;
-      let roleName = roleName_v1 || roleName_v2 || name;
+      let roleName = this.getRoleName(el, name);
 
       return {
         name: name ? stringToUTF8String(name) : null,
@@ -1859,6 +1853,18 @@ class ExtendedCatalog extends Catalog {
     if (isDict(el) && el.has('Type') && el.get('Type').name === 'MCR') {
       return {mcid: el.get('MCID'), pageIndex: page};
     }
+
+    if (isDict(el) && !el.has('Pg') && !el.has('K')) {
+      let name = el.has('S') ? el.get('S').name : null;
+      let roleName = this.getRoleName(el, name);
+
+      return {
+        name: name ? stringToUTF8String(name) : null,
+        roleName: roleName ? stringToUTF8String(roleName) : null,
+        children: [],
+        ref: ref
+      };
+    }
   }
 
   getPages(pages) {
@@ -1885,6 +1891,15 @@ class ExtendedCatalog extends Catalog {
 
   getRoleMap(tree) {
     return tree !== null && isDict(tree) && tree.has('RoleMap') ? tree.get('RoleMap') : new Map();
+  }
+
+  getRoleName(el, name) {
+    let namespace = isDict(el) && el.has('NS') ? el.get('NS') : null;
+    let roleNameNS = isDict(namespace) && namespace.has('RoleMapNS') ? namespace.get('RoleMapNS') : null;
+    let roleNameNSArray = isDict(roleNameNS) && roleNameNS.has(name) ? roleNameNS.get(name) : null;
+    let roleName_v1 = this.roleMap.get(name) !== undefined ? this.roleMap.get(name).name : null;
+    let roleName_v2 = roleNameNSArray !== null && roleNameNSArray[0].hasOwnProperty('name') ? roleNameNSArray[0].name : null;
+    return roleName_v1 || roleName_v2 || name;
   }
 
   get structureTree() {
