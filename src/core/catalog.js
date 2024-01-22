@@ -1854,8 +1854,8 @@ class ExtendedCatalog extends Catalog {
       return {mcid: el.get('MCID'), pageIndex: page};
     }
 
-    if (isDict(el) && !el.has('Pg') && !el.has('K')) {
-      let name = el.has('S') ? el.get('S').name : null;
+    if (isDict(el) && el.has('S')) {
+      let name = el.get('S').name;
       let roleName = this.getRoleName(el, name);
 
       return {
@@ -1897,8 +1897,8 @@ class ExtendedCatalog extends Catalog {
     let namespace = isDict(el) && el.has('NS') ? el.get('NS') : null;
     let roleNameNS = isDict(namespace) && namespace.has('RoleMapNS') ? namespace.get('RoleMapNS') : null;
     let roleNameNSArray = isDict(roleNameNS) && roleNameNS.has(name) ? roleNameNS.get(name) : null;
-    let roleName_v1 = this.roleMap.get(name) !== undefined ? this.roleMap.get(name).name : null;
-    let roleName_v2 = roleNameNSArray !== null && roleNameNSArray[0].hasOwnProperty('name') ? roleNameNSArray[0].name : null;
+    let roleName_v1 = this.roleMap.get(name) ? this.roleMap.get(name).name : null;
+    let roleName_v2 = Array.isArray(roleNameNSArray) && roleNameNSArray.length > 0 && roleNameNSArray[0].hasOwnProperty('name') ? roleNameNSArray[0].name : null;
     return roleName_v1 || roleName_v2 || name;
   }
 
