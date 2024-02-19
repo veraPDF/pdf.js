@@ -1808,6 +1808,7 @@ class ExtendedCatalog extends Catalog {
         name: name ? stringToUTF8String(name) : null,
         roleName: roleName ? stringToUTF8String(roleName) : null,
         children: this.getTreeElement(el.get('K'), page, el.getRaw('K')),
+        pageIndex: page,
         ref: ref
       };
     }
@@ -1866,6 +1867,7 @@ class ExtendedCatalog extends Catalog {
         name: name ? stringToUTF8String(name) : null,
         roleName: roleName ? stringToUTF8String(roleName) : null,
         children: [],
+        pageIndex: page,
         ref: ref
       };
     }
