@@ -16,6 +16,8 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
     this.boundingBoxes = {};
     this.ignoreCalculations = ignoreCalculations;
     this.operationArray = [];
+    this.mcidArray = [];
+    this.sameMcidDepth = 0;
     this.operationIndex = -1;
   }
 
@@ -408,6 +410,22 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
       if (fn !== OPS.markPoint && fn !== OPS.markPointProps &&
         fn !== OPS.beginMarkedContent && fn !== OPS.beginMarkedContentProps) {
         this.boundingBoxesStack.inc();
+      }
+
+      // Prevent parsing of Marked content with same MCIDs
+      if (fn === OPS.beginMarkedContentProps && isDict(args[1]) && args[1].has('MCID')) {
+        const mcid = args[1].get('MCID');
+        if (this.mcidArray.includes(mcid)) {
+          this.sameMcidDepth++;
+          return;
+        } else {
+          this.mcidArray.push(mcid);
+        }
+      }
+
+      if (fn === OPS.endMarkedContent && this.sameMcidDepth !== 0) {
+        this.sameMcidDepth--;
+        return;
       }
 
       switch (fn | 0) {
