@@ -345,7 +345,8 @@ const OPS = {
   setStrokeTransparent: 92,
   setFillTransparent: 93,
   boundingBoxes: 100,
-  operationPosition: 101
+  operationPosition: 101,
+  annotBBoxesAndOpPos: 102,
 };
 
 const PasswordResponses = {

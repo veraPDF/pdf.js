@@ -1718,6 +1718,7 @@ class PartialEvaluator {
   }
 
   getOperatorList({
+    initStreamPos,
     stream,
     task,
     resources,
@@ -1739,6 +1740,8 @@ class PartialEvaluator {
     var self = this;
     var xref = this.xref;
     let parsingText = false;
+    let prevStreamPos;
+    if (initStreamPos != null) stream.pos = initStreamPos;
     const localImageCache = new LocalImageCache();
     const localColorSpaceCache = new LocalColorSpaceCache();
     const localGStateCache = new LocalGStateCache();
@@ -1773,6 +1776,7 @@ class PartialEvaluator {
       const operation = {};
       let stop, i, ii, cs, name, isValidName;
       while (!(stop = timeSlotManager.check())) {
+        if (prevStreamPos) stream.pos = prevStreamPos; 
         // The arguments parsed by read() are used beyond this loop, so we
         // cannot reuse the same array on each iteration. Therefore we pass
         // in |null| as the initial value (see the comment on
@@ -1785,6 +1789,7 @@ class PartialEvaluator {
         let fn = operation.fn;
         boundingBoxCalculator.incrementOperation(fn);
 
+        prevStreamPos = stream.pos;
         switch (fn | 0) {
           case OPS.paintXObject:
             // eagerly compile XForm objects
