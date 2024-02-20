@@ -16,6 +16,8 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
     this.boundingBoxes = {};
     this.ignoreCalculations = ignoreCalculations;
     this.operationArray = [];
+    this.mcidArray = [];
+    this.sameMcidDepth = 0;
     this.operationIndex = -1;
   }
 
@@ -540,7 +542,16 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
           break;
         case OPS.beginMarkedContentProps:
           if (isDict(args[1]) && args[1].has('MCID')) {
-            this.boundingBoxesStack.begin(args[1].get('MCID'));
+            const mcid = args[1].get('MCID');
+
+            // Prevent parsing of Marked content with same MCIDs
+            if (this.mcidArray.includes(mcid)) {
+              this.sameMcidDepth++;
+              break;
+            } else {
+              this.mcidArray.push(mcid);
+            }
+            this.boundingBoxesStack.begin(mcid);
 
             //Clear graphics bounding box to split graphics in different marked content
             this.graphicsStateManager.state.x = null;
@@ -554,6 +565,11 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
           }
           break;
         case OPS.endMarkedContent:
+          if (this.sameMcidDepth !== 0) {
+            this.sameMcidDepth--;
+            break;
+          }
+
           let boundingBox = this.boundingBoxesStack.end();
           if (boundingBox !== null) {
             this.boundingBoxes[boundingBox.mcid] = {
