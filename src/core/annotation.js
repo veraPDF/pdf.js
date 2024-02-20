@@ -447,6 +447,7 @@ class Annotation {
     this.setColor(dict.getArray("C"));
     this.setBorderStyle(dict);
     this.setAppearance(dict);
+    this.initAppearancePos = this.appearance?.pos;
     this.setOptionalContent(dict);
 
     const MK = dict.get("MK");
@@ -921,8 +922,10 @@ class Annotation {
       isUsingOwnCanvas,
     ]);
 
-    await evaluator.getOperatorList({
+    const [MCIDBBoxes, opPos, noMCIDBBoxes] = await evaluator.getOperatorList({
+      initStreamPos: this.initAppearancePos,
       stream: appearance,
+      intent,
       task,
       resources,
       operatorList: opList,
@@ -934,7 +937,15 @@ class Annotation {
       opList.addOp(OPS.endMarkedContent, []);
     }
     this.reset();
-    return { opList, separateForm: false, separateCanvas: isUsingOwnCanvas };
+    return {
+      opList,
+      separateForm: false,
+      separateCanvas: isUsingOwnCanvas,
+      annotBBoxesAndOpPos: {
+        operationPosition: opPos,
+        boundingBoxes: [MCIDBBoxes, noMCIDBBoxes],
+      },
+    };
   }
 
   async save(evaluator, task, annotationStorage) {
@@ -1743,7 +1754,8 @@ class WidgetAnnotation extends Annotation {
     ]);
 
     const stream = new StringStream(content);
-    await evaluator.getOperatorList({
+    const [MCIDBBoxes, opPos, noMCIDBBoxes] = await evaluator.getOperatorList({
+      intent,
       stream,
       task,
       resources: this._fieldResources.mergedResources,
@@ -1754,7 +1766,15 @@ class WidgetAnnotation extends Annotation {
     if (optionalContent !== undefined) {
       opList.addOp(OPS.endMarkedContent, []);
     }
-    return { opList, separateForm: false, separateCanvas: false };
+    return {
+      opList,
+      separateForm: false,
+      separateCanvas: false,
+      annotBBoxesAndOpPos: {
+        operationPosition: opPos,
+        boundingBoxes: [MCIDBBoxes, noMCIDBBoxes],
+      },
+    };
   }
 
   _getMKDict(rotation) {

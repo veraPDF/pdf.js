@@ -462,6 +462,7 @@ class Page {
         intent & RenderingIntentFlag.ANNOTATIONS_DISABLE
       ) {
         if (intent & RenderingIntentFlag.OPLIST) {
+          pageOpList.addOp(OPS.annotBBoxesAndOpPos, []);
           pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
           pageOpList.addOp(OPS.boundingBoxes, [MCIDBoundingBoxes, noMCIDBoundingBoxes]);
         }
@@ -507,7 +508,8 @@ class Page {
         let form = false,
           canvas = false;
 
-        for (const { opList, separateForm, separateCanvas } of opLists) {
+        const annotationsBBoxesAndOperationPosition = [];
+        for (const { opList, separateForm, separateCanvas, annotBBoxesAndOpPos } of opLists) {
           pageOpList.addOpList(opList);
 
           if (separateForm) {
@@ -516,8 +518,16 @@ class Page {
           if (separateCanvas) {
             canvas = separateCanvas;
           }
+
+          annotationsBBoxesAndOperationPosition.push(
+            annotBBoxesAndOpPos ? [
+              annotBBoxesAndOpPos.operationPosition,
+              annotBBoxesAndOpPos.boundingBoxes,
+            ] : []
+          );
         }
         if (intent & RenderingIntentFlag.OPLIST) {
+          pageOpList.addOp(OPS.annotBBoxesAndOpPos, annotationsBBoxesAndOperationPosition);
           pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
           pageOpList.addOp(OPS.boundingBoxes, [
             MCIDBoundingBoxes,
