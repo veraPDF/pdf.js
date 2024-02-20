@@ -547,7 +547,7 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
             // Prevent parsing of Marked content with same MCIDs
             if (this.mcidArray.includes(mcid)) {
               this.sameMcidDepth++;
-              return;
+              break;
             } else {
               this.mcidArray.push(mcid);
             }
@@ -567,7 +567,7 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
         case OPS.endMarkedContent:
           if (this.sameMcidDepth !== 0) {
             this.sameMcidDepth--;
-            return;
+            break;
           }
 
           let boundingBox = this.boundingBoxesStack.end();
