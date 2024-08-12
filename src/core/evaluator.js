@@ -77,7 +77,7 @@ import { ImageResizer } from "./image_resizer.js";
 import { MurmurHash3_64 } from "../shared/murmurhash3.js";
 import { OperatorList } from "./operator_list.js";
 import { PDFImage } from "./image.js";
-import {BoundingBoxesCalculator} from "./bounding_boxes";
+import {BoundingBoxesCalculator} from "./bounding_boxes.js";
 
 const DefaultPartialEvaluatorOptions = Object.freeze({
   maxImageSize: -1,
@@ -1776,7 +1776,7 @@ class PartialEvaluator {
       const operation = {};
       let stop, i, ii, cs, name, isValidName;
       while (!(stop = timeSlotManager.check())) {
-        if (prevStreamPos) stream.pos = prevStreamPos; 
+        if (prevStreamPos) stream.pos = prevStreamPos;
         // The arguments parsed by read() are used beyond this loop, so we
         // cannot reuse the same array on each iteration. Therefore we pass
         // in |null| as the initial value (see the comment on

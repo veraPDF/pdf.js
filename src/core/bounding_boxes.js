@@ -1,11 +1,11 @@
 import {
   OPS, Util, IDENTITY_MATRIX
-} from '../shared/util';
+} from '../shared/util.js';
 import {
   StateManager,
   TextState
-} from "./evaluator";
-import {isDict} from "./primitives";
+} from "./evaluator.js";
+import {isDict} from "./primitives.js";
 
 var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
   function BoundingBoxesCalculator(ignoreCalculations) {
@@ -59,11 +59,11 @@ var BoundingBoxesCalculator = (function PartialEvaluatorClosure() {
         [tx0, ty0] = Util.applyTransform([0, descent + rise], this.textStateManager.state.textMatrix);
         //Calculate transformed height and shift to place whole glyph inside of bbox
         shift = [tx0 - this.textStateManager.state.textMatrix[4], ty0 - this.textStateManager.state.textMatrix[5]];
-        height = Util.applyTransform([0, ascent - descent], this.textStateManager.state.textMatrix);        
+        height = Util.applyTransform([0, ascent - descent], this.textStateManager.state.textMatrix);
       } else {
         [tx0, ty0] = Util.applyTransform([-this.textStateManager.state.fontSize / 2, rise], this.textStateManager.state.textMatrix);
         shift = [tx0 - this.textStateManager.state.textMatrix[4], ty0 - this.textStateManager.state.textMatrix[5]];
-        height = Util.applyTransform([ascent - descent, 0], this.textStateManager.state.textMatrix);        
+        height = Util.applyTransform([ascent - descent, 0], this.textStateManager.state.textMatrix);
       }
       height[0] -= this.textStateManager.state.textMatrix[4];
       height[1] -= this.textStateManager.state.textMatrix[5];
@@ -713,7 +713,7 @@ var BoundingBoxStack = (function BoundingBoxStack() {
 var NoMCIDBoundingBoxStack = (function NoMCIDBoundingBoxStack() {
   function NoMCIDBoundingBoxStack() {
     this.boundingBoxesStack = new BoundingBoxStack();
-    this.contentCounter = null;    
+    this.contentCounter = null;
     this.content = {};
     this.pointer = {};
   }
@@ -732,7 +732,7 @@ var NoMCIDBoundingBoxStack = (function NoMCIDBoundingBoxStack() {
 
     save: function NoMCIDBoundingBoxStack_save(x, y, w, h) {
       if (this.pointer.contentItems) {
-        this.pointer.contentItems.push({ 
+        this.pointer.contentItems.push({
           contentItem: { x, y, w, h }
         });
         this.pointer.final = true;
@@ -761,7 +761,7 @@ var NoMCIDBoundingBoxStack = (function NoMCIDBoundingBoxStack() {
         this.content[this.contentCounter.index] = { parent: this.content, contentItems: [] };
         this.pointer = this.content[this.contentCounter.index];
       } else if (
-          this.contentCounter.inMarkedContent !== false && isMC || 
+          this.contentCounter.inMarkedContent !== false && isMC ||
           !!this.contentCounter.inMarkedContent === isMC && !Object.keys(this.pointer).length
         ) {
         delete this.content[this.contentCounter.index].parent;

@@ -911,12 +911,6 @@ function getDefaultFtl() {
   return stringBuf.join("\n");
 }
 
-function getDialogPolyfillCSS() {
-  return fs
-    .readFileSync("node_modules/dialog-polyfill/dist/dialog-polyfill.css")
-    .toString();
-}
-
 gulp.task("locale", function () {
   const VIEWER_LOCALE_OUTPUT = "web/locale/";
 
@@ -1593,8 +1587,6 @@ function buildLib(defines, dir) {
       defines.SKIP_BABEL ? "lib/" : "lib-legacy/"
     ),
     DEFAULT_FTL: getDefaultFtl(),
-    DIALOG_POLYFILL_CSS:
-      defines.GENERIC && !defines.SKIP_BABEL ? getDialogPolyfillCSS() : "",
   };
 
   const inputStream = ordered([
