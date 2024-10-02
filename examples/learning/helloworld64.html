@@ -31,11 +31,15 @@
     'MDAwIG4gCjAwMDAwMDAzODAgMDAwMDAgbiAKdHJhaWxlcgo8PAogIC9TaXplIDYKICAvUm9v' +
     'dCAxIDAgUgo+PgpzdGFydHhyZWYKNDkyCiUlRU9G');
 
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    '../../node_modules/pdfjs-dist/build/pdf.worker.mjs',
+    import.meta.url
+  );
   //
   // The workerSrc property shall be specified.
   //
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    '../../node_modules/pdfjs-dist/build/pdf.worker.mjs';
+  // pdfjsLib.GlobalWorkerOptions.workerSrc =
+  //   '../../node_modules/pdfjs-dist/build/pdf.worker.mjs';
 
   // Opening PDF by passing its binary data as a string. It is still preferable
   // to use Uint8Array, but string or array-like structure will work too.

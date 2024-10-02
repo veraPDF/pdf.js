@@ -7,9 +7,13 @@ import * as pdfjsLib from "pdfjs-dist";
 
 const pdfPath = "../learning/helloworld.pdf";
 
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  '../../build/webpack/pdf.worker.bundle.js',
+  import.meta.url
+);
 // Setting worker path to worker bundle.
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "../../build/webpack/pdf.worker.bundle.js";
+// pdfjsLib.GlobalWorkerOptions.workerSrc =
+//   "../../build/webpack/pdf.worker.bundle.js";
 
 // Loading a document.
 const loadingTask = pdfjsLib.getDocument(pdfPath);

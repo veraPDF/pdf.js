@@ -18,10 +18,14 @@ if (!pdfjsLib.getDocument || !pdfjsViewer.PDFViewer) {
   alert("Please build the pdfjs-dist library using\n  `gulp dist-install`");
 }
 
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  '../../node_modules/pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+);
 // The workerSrc property shall be specified.
 //
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "../../node_modules/pdfjs-dist/build/pdf.worker.mjs";
+// pdfjsLib.GlobalWorkerOptions.workerSrc =
+//   "../../node_modules/pdfjs-dist/build/pdf.worker.mjs";
 
 // Some PDFs need external cmaps.
 //
