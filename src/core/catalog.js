@@ -1760,73 +1760,77 @@ class ExtendedCatalog extends Catalog {
   constructor(pdfManager, xref) {
     super(pdfManager, xref);
 
-    this.pages = this.getPages(this.toplevelPagesDict.get('Kids'));
+    this.pages = this.getPages(this.toplevelPagesDict.get("Kids"));
     this.roleMap = this.getRoleMap(this.structTreeRoot);
   }
 
   _convertStructToObject(struct) {
     if (Array.isArray(struct)) {
       return struct.map(el => this._convertStructToObject(el));
-    } else if (isDict(struct)) {
-      let result = {};
+    } else if (struct instanceof Dict) {
+      const result = {};
       struct.getKeys().forEach(key => {
         result[key] = this._convertStructToObject(struct.get(key));
       });
       return result;
-    } else if (isName(struct)) {
+    } else if (struct instanceof Name) {
       return struct.name;
-    } else {
-      return struct;
     }
+    return struct;
   }
 
   get structTreeRoot() {
-    const structTreeRoot = this._catDict.get('StructTreeRoot');
-    if (!isDict(structTreeRoot)) {
+    const structTreeRoot = this._catDict.get("StructTreeRoot");
+    if ((!structTreeRoot) instanceof Dict) {
       return null;
     }
-    return shadow(this, 'structTreeRoot', structTreeRoot);
+    return shadow(this, "structTreeRoot", structTreeRoot);
   }
 
   getTreeElement(el, page, ref) {
-    //update page for current element
-    if (isDict(el) && el.has('Pg')) {
-      let pageRef = el.getRaw('Pg');
-      let newPage = this.pages.findIndex(el => el.num === pageRef.num && el.gen === pageRef.gen);
+    // update page for current element
+    if (el instanceof Dict && el.has("Pg")) {
+      const pageRef = el.getRaw("Pg");
+      let newPage = this.pages.findIndex(
+        pageEl => pageEl.num === pageRef.num && pageEl.gen === pageRef.gen
+      );
       newPage = newPage !== -1 ? newPage : null;
       if (newPage !== page) {
         page = newPage;
       }
     }
 
-    if (isDict(el) && el.has('K')) {
-      let name = el.has('S') ? el.get('S').name : null;
-      let roleName = this.getRoleName(el, name);
+    if (el instanceof Dict && el.has("K")) {
+      const name = el.has("S") ? el.get("S").name : null;
+      const roleName = this.getRoleName(el, name);
 
       return {
         name: name ? stringToUTF8String(name) : null,
         roleName: roleName ? stringToUTF8String(roleName) : null,
-        children: this.getTreeElement(el.get('K'), page, el.getRaw('K')),
+        children: this.getTreeElement(el.get("K"), page, el.getRaw("K")),
         pageIndex: page,
-        ref: ref
+        ref: ref instanceof Ref ? ref : null,
       };
     }
 
-    if (isDict(el) && el.has('Obj')) {
-      let obj = el.get('Obj');
+    if (el instanceof Dict && el.has("Obj")) {
+      const obj = el.get("Obj");
       let type = null;
-      if (obj.has('Type')) {
-        type = obj.get('Type').name;
+      if (obj.has("Type")) {
+        type = obj.get("Type").name;
       }
-      if (obj.has('Subtype')) {
-        type = obj.get('Subtype').name;
+      if (obj.has("Subtype")) {
+        type = obj.get("Subtype").name;
       }
-      switch (type){
-        case 'Link':
-        case 'Annot':
-          let rect = obj.get('Rect');
-          let pageRef = Array.isArray(this.pages) && Number.isInteger(page) && page >= 0 ? this.pages[page] : null;
-          let pageObj = pageRef ? this.xref.fetch(pageRef) : null;
+      switch (type) {
+        case "Link":
+        case "Annot":
+          const rect = obj.get("Rect");
+          const pageRef =
+            Array.isArray(this.pages) && Number.isInteger(page) && page >= 0
+              ? this.pages[page]
+              : null;
+          const pageObj = pageRef ? this.xref.fetch(pageRef) : null;
 
           return {
             annotIndex: this.getAnnotIndex(el, pageObj),
@@ -1841,49 +1845,55 @@ class ExtendedCatalog extends Catalog {
     if (Array.isArray(el)) {
       return el.map(subel => {
         if (Number.isInteger(subel)) {
-          return {mcid: subel, pageIndex: page};
-        } else if (!(subel.hasOwnProperty('num') && subel.hasOwnProperty('gen')) && subel.get('Type') !== 'OBJR') {
+          return { mcid: subel, pageIndex: page };
+        } else if (
+          !(subel.hasOwnProperty("num") && subel.hasOwnProperty("gen")) &&
+          subel.get("Type") !== "OBJR"
+        ) {
           return this.getTreeElement(subel, page);
-        } else if (subel.hasOwnProperty('num') && subel.hasOwnProperty('gen')){
+        } else if (subel.hasOwnProperty("num") && subel.hasOwnProperty("gen")) {
           return this.getTreeElement(this.xref.fetch(subel), page, subel);
         }
-      })
+        return null;
+      });
     }
 
     if (Number.isInteger(el)) {
-      return {mcid: el, pageIndex: page};
+      return { mcid: el, pageIndex: page };
     }
 
-    if (isDict(el) && el.has('Type') && el.get('Type').name === 'MCR') {
-      return {mcid: el.get('MCID'), pageIndex: page};
+    if (el instanceof Dict && el.has("Type") && el.get("Type").name === "MCR") {
+      return { mcid: el.get("MCID"), pageIndex: page };
     }
 
-    if (isDict(el) && el.has('S')) {
-      let name = el.get('S').name;
-      let roleName = this.getRoleName(el, name);
+    if (el instanceof Dict && el.has("S")) {
+      const name = el.get("S").name;
+      const roleName = this.getRoleName(el, name);
 
       return {
         name: name ? stringToUTF8String(name) : null,
         roleName: roleName ? stringToUTF8String(roleName) : null,
         children: [],
         pageIndex: page,
-        ref: ref
+        ref: ref instanceof Ref ? ref : null,
       };
     }
+
+    return null;
   }
 
   getPages(pages) {
     let pagesArray = [];
     pages.map(kid => {
-      if (kid instanceof Ref){
-        let kidObj = this.xref.fetch(kid);
-        let kidObjType = kidObj.get('Type').name;
+      if (kid instanceof Ref) {
+        const kidObj = this.xref.fetch(kid);
+        const kidObjType = kidObj.get("Type").name;
         switch (kidObjType) {
-          case 'Page':
+          case "Page":
             pagesArray.push(kid);
             break;
-          case 'Pages':
-            let array = this.getPages(kidObj.get('Kids'));
+          case "Pages":
+            const array = this.getPages(kidObj.get("Kids"));
             pagesArray = pagesArray.concat(array);
             break;
           default:
@@ -1895,31 +1905,65 @@ class ExtendedCatalog extends Catalog {
   }
 
   getRoleMap(tree) {
-    return isDict(tree) && tree.has('RoleMap') ? tree.get('RoleMap') : new Map();
+    return tree instanceof Dict && tree.has("RoleMap")
+      ? tree.get("RoleMap")
+      : new Map();
   }
 
   getRoleName(el, name) {
-    let namespace = isDict(el) && el.has('NS') ? el.get('NS') : null;
-    let roleNameNS = isDict(namespace) && namespace.has('RoleMapNS') ? namespace.get('RoleMapNS') : null;
-    let roleNameNSArray = isDict(roleNameNS) && roleNameNS.has(name) ? roleNameNS.get(name) : null;
-    let roleName_v1 = this.roleMap.get(name) ? this.roleMap.get(name).name : null;
-    let roleName_v2 = Array.isArray(roleNameNSArray) && roleNameNSArray.length > 0 && roleNameNSArray[0].hasOwnProperty('name') ? roleNameNSArray[0].name : null;
+    const namespace = el instanceof Dict && el.has("NS") ? el.get("NS") : null;
+    const roleNameNS =
+      namespace instanceof Dict && namespace.has("RoleMapNS")
+        ? namespace.get("RoleMapNS")
+        : null;
+    const roleNameNSArray =
+      roleNameNS instanceof Dict && roleNameNS.has(name)
+        ? roleNameNS.get(name)
+        : null;
+    const roleName_v1 = this.roleMap.get(name)
+      ? this.roleMap.get(name).name
+      : null;
+    const roleName_v2 =
+      Array.isArray(roleNameNSArray) &&
+      roleNameNSArray.length > 0 &&
+      roleNameNSArray[0].hasOwnProperty("name")
+        ? roleNameNSArray[0].name
+        : null;
     return roleName_v1 || roleName_v2 || name;
   }
 
   getAnnotIndex(el, pageObj) {
-    let objRef = isDict(el) && el.has('Obj') ? el.getRaw('Obj') : null;
-    let annotsArray = isDict(pageObj) && pageObj.has('Annots') ? pageObj.get('Annots') : null;
-    let annotIndex = Array.isArray(annotsArray) && annotsArray.length > 0 && objRef instanceof Ref ? annotsArray.findIndex(el => el.num === objRef.num && el.gen === objRef.gen) : null;
+    const objRef =
+      el instanceof Dict && el.has("Obj") ? el.getRaw("Obj") : null;
+    const annotsArray =
+      pageObj instanceof Dict && pageObj.has("Annots")
+        ? pageObj.get("Annots")
+        : null;
+    const annotIndex =
+      Array.isArray(annotsArray) &&
+      annotsArray.length > 0 &&
+      objRef instanceof Ref
+        ? annotsArray.findIndex(
+            annot => annot.num === objRef.num && annot.gen === objRef.gen
+          )
+        : null;
     return annotIndex;
   }
 
   get structureTree() {
     let structureTree = null;
-    if (this.structTreeRoot && isDict(this.structTreeRoot) && this.structTreeRoot.has('K')) {
-      structureTree = this.getTreeElement(this.structTreeRoot.get('K'), null, this.structTreeRoot.getRaw('K'));
+    if (
+      this.structTreeRoot &&
+      this.structTreeRoot instanceof Dict &&
+      this.structTreeRoot.has("K")
+    ) {
+      structureTree = this.getTreeElement(
+        this.structTreeRoot.get("K"),
+        null,
+        this.structTreeRoot.getRaw("K")
+      );
     }
-    return shadow(this, 'structureTree', structureTree);
+    return shadow(this, "structureTree", structureTree);
   }
 }
 

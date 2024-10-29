@@ -71,8 +71,16 @@ async function writeStream(stream, buffer, transform) {
     try {
       const cs = new CompressionStream("deflate");
       const writer = cs.writable.getWriter();
-      writer.write(bytes);
-      writer.close();
+      // SHOULD BE FIXED IN FUTURE PDF.JS VERSIONS - START
+      await writer.ready;
+      writer
+        .write(bytes)
+        .then(async () => {
+          await writer.ready;
+          await writer.close();
+        })
+        .catch(() => {});
+      // SHOULD BE FIXED IN FUTURE PDF.JS VERSIONS - END
 
       // Response::text doesn't return the correct data.
       const buf = await new Response(cs.readable).arrayBuffer();

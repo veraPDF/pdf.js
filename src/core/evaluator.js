@@ -78,7 +78,7 @@ import { ImageResizer } from "./image_resizer.js";
 import { MurmurHash3_64 } from "../shared/murmurhash3.js";
 import { OperatorList } from "./operator_list.js";
 import { PDFImage } from "./image.js";
-import { BoundingBoxesCalculator } from "./bounding_boxes";
+import { BoundingBoxesCalculator } from "./bounding_boxes.js";
 
 const DefaultPartialEvaluatorOptions = Object.freeze({
   maxImageSize: -1,
