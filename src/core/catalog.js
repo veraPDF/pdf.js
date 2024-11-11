@@ -1761,7 +1761,7 @@ class ExtendedCatalog extends Catalog {
     super(pdfManager, xref);
 
     this.pages = this.getPages(this.toplevelPagesDict.get("Kids"));
-    this.roleMap = this.getRoleMap(this.structTreeRoot);
+    this.roleMap = this.getRoleMap(this.structTreeRootObject);
   }
 
   _convertStructToObject(struct) {
@@ -1779,12 +1779,12 @@ class ExtendedCatalog extends Catalog {
     return struct;
   }
 
-  get structTreeRoot() {
+  get structTreeRootObject() {
     const structTreeRoot = this._catDict.get("StructTreeRoot");
     if ((!structTreeRoot) instanceof Dict) {
       return null;
     }
-    return shadow(this, "structTreeRoot", structTreeRoot);
+    return shadow(this, "structTreeRootObject", structTreeRoot);
   }
 
   getTreeElement(el, page, ref) {
@@ -1953,14 +1953,14 @@ class ExtendedCatalog extends Catalog {
   get structureTree() {
     let structureTree = null;
     if (
-      this.structTreeRoot &&
-      this.structTreeRoot instanceof Dict &&
-      this.structTreeRoot.has("K")
+      this.structTreeRootObject &&
+      this.structTreeRootObject instanceof Dict &&
+      this.structTreeRootObject.has("K")
     ) {
       structureTree = this.getTreeElement(
-        this.structTreeRoot.get("K"),
+        this.structTreeRootObject.get("K"),
         null,
-        this.structTreeRoot.getRaw("K")
+        this.structTreeRootObject.getRaw("K")
       );
     }
     return shadow(this, "structureTree", structureTree);

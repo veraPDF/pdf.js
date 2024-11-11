@@ -529,7 +529,11 @@ class Page {
           operatorList: opList,
           intent,
         })
-        .then(function ([boundingBoxesByMCID, operationArray, boundingBoxesWithoutMCID]) {
+        .then(function ([
+          boundingBoxesByMCID,
+          operationArray,
+          boundingBoxesWithoutMCID,
+        ]) {
           MCIDBoundingBoxes = boundingBoxesByMCID;
           positionByOperationIndex = operationArray;
           noMCIDBoundingBoxes = boundingBoxesWithoutMCID;
@@ -573,7 +577,10 @@ class Page {
         if (intent & RenderingIntentFlag.OPLIST) {
           pageOpList.addOp(OPS.annotBBoxesAndOpPos, []);
           pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
-          pageOpList.addOp(OPS.boundingBoxes, [MCIDBoundingBoxes, noMCIDBoundingBoxes]);
+          pageOpList.addOp(OPS.boundingBoxes, [
+            MCIDBoundingBoxes,
+            noMCIDBoundingBoxes,
+          ]);
         }
         pageOpList.flush(/* lastChunk = */ true);
         return { length: pageOpList.totalLength };
@@ -623,22 +630,31 @@ class Page {
           canvas = false;
 
         const annotationsBBoxesAndOperationPosition = [];
-        for (const { opList, separateForm, separateCanvas, annotBBoxesAndOpPos } of opLists) {
+        for (const {
+          opList,
+          separateForm,
+          separateCanvas,
+          annotBBoxesAndOpPos,
+        } of opLists) {
           pageOpList.addOpList(opList);
-
 
           form ||= separateForm;
           canvas ||= separateCanvas;
 
           annotationsBBoxesAndOperationPosition.push(
-            annotBBoxesAndOpPos ? [
-              annotBBoxesAndOpPos.operationPosition,
-              annotBBoxesAndOpPos.boundingBoxes,
-            ] : []
+            annotBBoxesAndOpPos
+              ? [
+                  annotBBoxesAndOpPos.operationPosition,
+                  annotBBoxesAndOpPos.boundingBoxes,
+                ]
+              : []
           );
         }
         if (intent & RenderingIntentFlag.OPLIST) {
-          pageOpList.addOp(OPS.annotBBoxesAndOpPos, annotationsBBoxesAndOperationPosition);
+          pageOpList.addOp(
+            OPS.annotBBoxesAndOpPos,
+            annotationsBBoxesAndOperationPosition
+          );
           pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
           pageOpList.addOp(OPS.boundingBoxes, [
             MCIDBoundingBoxes,
@@ -736,17 +752,14 @@ class Page {
 
     const intentAny = !!(intent & RenderingIntentFlag.ANY),
       intentDisplay = !!(intent & RenderingIntentFlag.DISPLAY),
-      intentPrint = !!(intent & RenderingIntentFlag.PRINT);
+      intentPrint = !!(intent & RenderingIntentFlag.PRINT),
+      intentOplist = !!(intent & RenderingIntentFlag.OPLIST);
 
     for (const annotation of annotations) {
       // Get the annotation even if it's hidden because
       // JS can change its display.
       const isVisible = intentAny || (intentDisplay && annotation.viewable);
-      if (
-        isVisible ||
-        (intentPrint && annotation.printable) ||
-        intent & RenderingIntentFlag.OPLIST
-      ) {
+      if (isVisible || (intentPrint && annotation.printable) || intentOplist) {
         annotationsData.push(annotation.data);
       }
 
