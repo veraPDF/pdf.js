@@ -653,7 +653,6 @@ class Annotation {
     const isLocked = !!(this.flags & AnnotationFlag.LOCKED);
     const isContentLocked = !!(this.flags & AnnotationFlag.LOCKEDCONTENTS);
 
-    console.log(annotationGlobals.structTreeRoot);
     if (annotationGlobals.structTreeRoot) {
       let structParent = dict.get("StructParent");
       structParent =
