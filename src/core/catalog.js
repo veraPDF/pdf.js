@@ -52,6 +52,7 @@ import { FileSpec } from "./file_spec.js";
 import { GlobalImageCache } from "./image_utils.js";
 import { MetadataParser } from "./metadata_parser.js";
 import { StructTreeRoot } from "./struct_tree.js";
+import { FlateStream } from "./flate_stream.js";
 
 function isValidExplicitDest(dest) {
   if (!Array.isArray(dest) || dest.length < 2) {
@@ -1816,6 +1817,11 @@ class ExtendedCatalog extends Catalog {
     if (el instanceof Dict && el.has("Obj")) {
       const obj = el.get("Obj");
       let type = null;
+
+      if (obj instanceof FlateStream) {
+        return null;
+      }
+
       if (obj.has("Type")) {
         type = obj.get("Type").name;
       }

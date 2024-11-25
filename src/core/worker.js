@@ -332,7 +332,6 @@ class WorkerMessageHandler {
 
     function setupDoc(data) {
       function onSuccess(doc) {
-        console.log(doc);
         ensureNotTerminated();
         handler.send("GetDoc", { pdfInfo: doc });
       }

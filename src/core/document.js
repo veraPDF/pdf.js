@@ -755,12 +755,10 @@ class Page {
       intentPrint = !!(intent & RenderingIntentFlag.PRINT),
       intentOplist = !!(intent & RenderingIntentFlag.OPLIST);
 
-    console.log(annotations);
     for (const annotation of annotations) {
       // Get the annotation even if it's hidden because
       // JS can change its display.
       const isVisible = intentAny || (intentDisplay && annotation.viewable);
-      console.log(isVisible, intentPrint && annotation.printable, intentOplist);
       if (isVisible || (intentPrint && annotation.printable) || intentOplist) {
         annotationsData.push(annotation.data);
       }
@@ -797,7 +795,6 @@ class Page {
     }
 
     await Promise.all(textContentPromises);
-    console.log("annotationsData", annotationsData);
     return annotationsData;
   }
 
