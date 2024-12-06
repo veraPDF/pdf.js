@@ -47,6 +47,7 @@ import Vinyl from "vinyl";
 import webpack2 from "webpack";
 import webpackStream from "webpack-stream";
 import zip from "gulp-zip";
+import notifier from "node-notifier";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -2259,7 +2260,7 @@ gulp.task(
     "minified",
     "minified-legacy",
     "types",
-    function createDist() {
+    function createDist(done) {
       console.log();
       console.log("### Cloning baseline distribution");
 
@@ -2277,7 +2278,7 @@ gulp.task(
           fs.rmSync(DIST_DIR + entry, { recursive: true, force: true });
         }
       }
-
+      done();
       return ordered([
         packageJson().pipe(gulp.dest(DIST_DIR)),
         gulp
@@ -2370,6 +2371,14 @@ gulp.task(
           .src(TYPES_DIR + "**/*", { base: TYPES_DIR, encoding: false })
           .pipe(gulp.dest(DIST_DIR + "types/")),
       ]);
+    },
+    function sendNotification(done) {
+      notifier.notify({
+        icon: path.join(__dirname, 'logo.svg'),
+        title: 'PDF.JS',
+        message: 'Dist build finished'
+      });
+      done();
     }
   )
 );

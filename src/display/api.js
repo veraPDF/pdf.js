@@ -1958,7 +1958,6 @@ class LoopbackPort {
   #deferred = Promise.resolve();
 
   postMessage(obj, transfer) {
-    console.log(obj);
     const event = {
       data: structuredClone(obj, transfer ? { transfer } : null),
     };

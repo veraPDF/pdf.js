@@ -1863,7 +1863,7 @@ class ExtendedCatalog extends Catalog {
     }
 
     if (el instanceof Dict && el.has("Type") && el.get("Type").name === "MCR") {
-      return { mcid: el.get("MCID"), pageIndex: page };
+      return { mcid: el.get("MCID"), pageIndex: page, stm: el.getRaw("Stm") };
     }
 
     if (el instanceof Dict && el.has("S")) {

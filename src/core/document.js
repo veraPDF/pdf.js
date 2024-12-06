@@ -505,7 +505,10 @@ class Page {
       );
     }
 
-    let MCIDBoundingBoxes, positionByOperationIndex, noMCIDBoundingBoxes;
+    let MCIDBoundingBoxes,
+      positionByOperationIndex,
+      noMCIDBoundingBoxes,
+      refMCIDBoundingBoxes;
     const pageListPromise = Promise.all([
       contentStreamPromise,
       resourcesPromise,
@@ -533,10 +536,12 @@ class Page {
           boundingBoxesByMCID,
           operationArray,
           boundingBoxesWithoutMCID,
+          refBoundingBoxesByMCID,
         ]) {
           MCIDBoundingBoxes = boundingBoxesByMCID;
           positionByOperationIndex = operationArray;
           noMCIDBoundingBoxes = boundingBoxesWithoutMCID;
+          refMCIDBoundingBoxes = refBoundingBoxesByMCID;
           return opList;
         });
     });
@@ -580,6 +585,7 @@ class Page {
           pageOpList.addOp(OPS.boundingBoxes, [
             MCIDBoundingBoxes,
             noMCIDBoundingBoxes,
+            refMCIDBoundingBoxes,
           ]);
         }
         pageOpList.flush(/* lastChunk = */ true);

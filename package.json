@@ -61,7 +61,8 @@
     "vinyl": "^3.0.0",
     "webpack": "^5.92.1",
     "webpack-stream": "^7.0.0",
-    "yargs": "^17.7.2"
+    "yargs": "^17.7.2",
+    "node-notifier": "^10.0.1"
   },
   "scripts": {
     "postinstall": "cross-env PUPPETEER_PRODUCT=firefox node node_modules/puppeteer/install.mjs"

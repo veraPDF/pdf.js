@@ -67,6 +67,8 @@ import {
 import { NullStream, Stream } from "./stream.js";
 import { BaseStream } from "./base_stream.js";
 import { bidi } from "./bidi.js";
+// eslint-disable-next-line import/no-cycle
+import { BoundingBoxesCalculator } from "./bounding_boxes.js";
 import { ColorSpace } from "./colorspace.js";
 import { DecodeStream } from "./decode_stream.js";
 import { FontFlags } from "./fonts_utils.js";
@@ -78,7 +80,6 @@ import { ImageResizer } from "./image_resizer.js";
 import { MurmurHash3_64 } from "../shared/murmurhash3.js";
 import { OperatorList } from "./operator_list.js";
 import { PDFImage } from "./image.js";
-import { BoundingBoxesCalculator } from "./bounding_boxes.js";
 
 const DefaultPartialEvaluatorOptions = Object.freeze({
   maxImageSize: -1,
@@ -468,7 +469,10 @@ class PartialEvaluator {
     operatorList,
     task,
     initialState,
-    localColorSpaceCache
+    localColorSpaceCache,
+    intent = RenderingIntentFlag.DISPLAY,
+    initialTextState,
+    initialGraphicsState
   ) {
     const dict = xobj.dict;
     const matrix = lookupMatrix(dict.getArray("Matrix"), null);
@@ -533,13 +537,17 @@ class PartialEvaluator {
     const args = group ? [matrix, null] : [matrix, bbox];
     operatorList.addOp(OPS.paintFormXObjectBegin, args);
 
-    await this.getOperatorList({
-      stream: xobj,
-      task,
-      resources: dict.get("Resources") || resources,
-      operatorList,
-      initialState,
-    });
+    const [boundingBoxesByMCID, operationArray, boundingBoxesWithoutMCID] =
+      await this.getOperatorList({
+        stream: xobj,
+        task,
+        resources: dict.get("Resources") || resources,
+        operatorList,
+        initialState,
+        intent,
+        initialTextState,
+        initialGraphicsState,
+      });
     operatorList.addOp(OPS.paintFormXObjectEnd, []);
 
     if (group) {
@@ -549,6 +557,7 @@ class PartialEvaluator {
     if (optionalContent !== undefined) {
       operatorList.addOp(OPS.endMarkedContent, []);
     }
+    return [boundingBoxesByMCID, operationArray, boundingBoxesWithoutMCID];
   }
 
   _sendImgData(objId, imgData, cacheGlobally = false) {
@@ -1727,6 +1736,8 @@ class PartialEvaluator {
     initialState = null,
     fallbackFontDict = null,
     intent,
+    initialTextState = null,
+    initialGraphicsState = null,
   }) {
     // Ensure that `resources`/`initialState` is correctly initialized,
     // even if the provided parameter is e.g. `null`.
@@ -1737,12 +1748,19 @@ class PartialEvaluator {
       throw new Error('getOperatorList: missing "operatorList" parameter');
     }
 
-    const boundingBoxCalculator = new BoundingBoxesCalculator(!(intent & RenderingIntentFlag.OPLIST));
+    const isOpListIntent = !!(intent & RenderingIntentFlag.OPLIST);
+    const boundingBoxCalculator = new BoundingBoxesCalculator(
+      !isOpListIntent,
+      initialTextState,
+      initialGraphicsState
+    );
     const self = this;
     const xref = this.xref;
     let parsingText = false;
     let prevStreamPos;
-    if (initStreamPos != null) stream.pos = initStreamPos;
+    if (initStreamPos) {
+      stream.pos = initStreamPos;
+    }
     const localImageCache = new LocalImageCache();
     const localColorSpaceCache = new LocalColorSpaceCache();
     const localGStateCache = new LocalGStateCache();
@@ -1777,7 +1795,9 @@ class PartialEvaluator {
       const operation = {};
       let stop, i, ii, cs, name, isValidName;
       while (!(stop = timeSlotManager.check())) {
-        if (prevStreamPos) stream.pos = prevStreamPos;
+        if (prevStreamPos) {
+          stream.pos = prevStreamPos;
+        }
         // The arguments parsed by read() are used beyond this loop, so we
         // cannot reuse the same array on each iteration. Therefore we pass
         // in |null| as the initial value (see the comment on
@@ -1800,7 +1820,9 @@ class PartialEvaluator {
             if (isValidName) {
               const localImage = localImageCache.getByName(name);
               if (localImage) {
-                boundingBoxCalculator.parseOperator(OPS.paintXObject, ["Image"]);
+                boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                  "Image",
+                ]);
                 addLocallyCachedImageOps(operatorList, localImage);
                 args = null;
                 continue;
@@ -1819,7 +1841,9 @@ class PartialEvaluator {
                     localImageCache.getByRef(xobj) ||
                     self._regionalImageCache.getByRef(xobj);
                   if (localImage) {
-                    boundingBoxCalculator.parseOperator(OPS.paintXObject, ["Image"]);
+                    boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                      "Image",
+                    ]);
                     addLocallyCachedImageOps(operatorList, localImage);
                     resolveXObject();
                     return;
@@ -1830,7 +1854,9 @@ class PartialEvaluator {
                     self.pageIndex
                   );
                   if (globalImage) {
-                    boundingBoxCalculator.parseOperator(OPS.paintXObject, ["Image"]);
+                    boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                      "Image",
+                    ]);
                     operatorList.addDependency(globalImage.objId);
                     operatorList.addImageOps(
                       globalImage.fn,
@@ -1856,6 +1882,7 @@ class PartialEvaluator {
 
                 if (type.name === "Form") {
                   stateManager.save();
+                  boundingBoxCalculator.saveState();
                   self
                     .buildFormXObject(
                       resources,
@@ -1864,15 +1891,25 @@ class PartialEvaluator {
                       operatorList,
                       task,
                       stateManager.state.clone(),
-                      localColorSpaceCache
+                      localColorSpaceCache,
+                      intent,
+                      boundingBoxCalculator.textState,
+                      boundingBoxCalculator.graphicsState
                     )
-                    .then(function () {
+                    .then(function ([boundingBoxesByMCID]) {
+                      boundingBoxCalculator.addRefBoundingBoxes(
+                        xobj.dict.objId,
+                        boundingBoxesByMCID
+                      );
                       stateManager.restore();
+                      boundingBoxCalculator.restoreState();
                       resolveXObject();
                     }, rejectXObject);
                   return;
                 } else if (type.name === "Image") {
-                  boundingBoxCalculator.parseOperator(OPS.paintXObject, [type.name]);
+                  boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                    type.name,
+                  ]);
                   self
                     .buildPaintImageXObject({
                       resources,
@@ -1921,9 +1958,15 @@ class PartialEvaluator {
                   fallbackFontDict
                 )
                 .then(function (translated) {
-                  boundingBoxCalculator.parseOperator(OPS.setFont, [fontSize, translated]);
+                  boundingBoxCalculator.parseOperator(OPS.setFont, [
+                    fontSize,
+                    translated,
+                  ]);
                   operatorList.addDependency(translated.loadedName);
-                  operatorList.addOp(OPS.setFont, [translated.loadedName, fontSize]);
+                  operatorList.addOp(OPS.setFont, [
+                    translated.loadedName,
+                    fontSize,
+                  ]);
                 })
             );
             return;
@@ -1999,8 +2042,12 @@ class PartialEvaluator {
             operatorList.addOp(OPS.setWordSpacing, [args.shift()]);
             operatorList.addOp(OPS.setCharSpacing, [args.shift()]);
             boundingBoxCalculator.parseOperator(OPS.nextLine);
-            boundingBoxCalculator.parseOperator(OPS.setWordSpacing, [args.shift()]);
-            boundingBoxCalculator.parseOperator(OPS.setCharSpacing, [args.shift()]);
+            boundingBoxCalculator.parseOperator(OPS.setWordSpacing, [
+              args.shift(),
+            ]);
+            boundingBoxCalculator.parseOperator(OPS.setCharSpacing, [
+              args.shift(),
+            ]);
             args[0] = self.handleText(args[0], stateManager.state);
             fn = OPS.showText;
             break;
@@ -2323,11 +2370,16 @@ class PartialEvaluator {
       // Some PDFs don't close all restores inside object/form.
       // Closing those for them.
       closePendingRestoreOPS();
-      // Add extra data about marked content and glyphs position as last elements
-      // of operator list with corresponding custom functions 'operationPosition'(100)
-      // and 'boundingBoxes'(101), because it won't affect on
-      // the process of rendering
-      resolve([boundingBoxCalculator.boundingBoxes, boundingBoxCalculator.operationArray, boundingBoxCalculator.getNoMCIDBoundingBoxes()]);
+      // Add extra data about marked content and glyphs position
+      // as last elements of operator list with corresponding
+      // custom functions 'operationPosition'(100) and 'boundingBoxes'(101),
+      // because it won't affect on the process of rendering
+      resolve([
+        boundingBoxCalculator.boundingBoxes,
+        boundingBoxCalculator.operationArray,
+        boundingBoxCalculator.getNoMCIDBoundingBoxes(),
+        boundingBoxCalculator.refBoundingBoxes,
+      ]);
     }).catch(reason => {
       if (reason instanceof AbortException) {
         return;
@@ -4891,9 +4943,15 @@ class TextState {
 
   clone() {
     const clone = Object.create(this);
-    clone.textMatrix = this.textMatrix ? this.textMatrix.slice() : IDENTITY_MATRIX.slice();
-    clone.textLineMatrix = this.textLineMatrix ? this.textLineMatrix.slice() : IDENTITY_MATRIX.slice();
-    clone.fontMatrix = this.fontMatrix ? this.fontMatrix.slice() : FONT_IDENTITY_MATRIX.slice();
+    clone.textMatrix = this.textMatrix
+      ? this.textMatrix.slice()
+      : IDENTITY_MATRIX.slice();
+    clone.textLineMatrix = this.textLineMatrix
+      ? this.textLineMatrix.slice()
+      : IDENTITY_MATRIX.slice();
+    clone.fontMatrix = this.fontMatrix
+      ? this.fontMatrix.slice()
+      : FONT_IDENTITY_MATRIX.slice();
     return clone;
   }
 }
