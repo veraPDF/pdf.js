@@ -2320,6 +2320,7 @@ class PartialEvaluator {
             ) {
               pathBuffer.push(DrawOPS.closePath);
             }
+            boundingBoxCalculator.parseOperator(fn);
             if (pathBuffer.length === 0) {
               operatorList.addOp(OPS.constructPath, [fn, [null], null]);
             } else {
@@ -2334,7 +2335,9 @@ class PartialEvaluator {
             continue;
           }
           case OPS.setTextMatrix:
-            operatorList.addOp(fn, [new Float32Array(args)]);
+            const textMatrix = new Float32Array(args);
+            operatorList.addOp(fn, [textMatrix]);
+            boundingBoxCalculator.parseOperator(fn, textMatrix);
             continue;
           case OPS.markPoint:
           case OPS.markPointProps:

@@ -1770,6 +1770,7 @@ class ExtendedCatalog extends Catalog {
   constructor(pdfManager, xref) {
     super(pdfManager, xref);
 
+    this.catDist = this.cloneDict();
     this.pages = this.getPages(this.toplevelPagesDict.get("Kids"));
     this.roleMap = this.getRoleMap(this.structTreeRootObject);
   }
@@ -1790,7 +1791,7 @@ class ExtendedCatalog extends Catalog {
   }
 
   get structTreeRootObject() {
-    const structTreeRoot = this._catDict.get("StructTreeRoot");
+    const structTreeRoot = this.catDist?.get("StructTreeRoot");
     if ((!structTreeRoot) instanceof Dict) {
       return null;
     }

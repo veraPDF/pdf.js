@@ -180,7 +180,7 @@ class WorkerMessageHandler {
       const [numPages, fingerprints, structureTree] = await Promise.all([
         pdfManager.ensureDoc("numPages"),
         pdfManager.ensureDoc("fingerprints"),
-        pdfManager.ensureDoc('structureTree'),
+        pdfManager.ensureDoc("structureTree"),
       ]);
 
       // Get htmlForXfa after numPages to avoid to create HTML twice.
