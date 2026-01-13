@@ -58,7 +58,7 @@ function renderPage(
     printAnnotationStoragePromise,
   ]).then(function ([pdfPage, printAnnotationStorage]) {
     const renderContext = {
-      canvasContext: ctx,
+      canvas: scratchCanvas,
       transform: [PRINT_UNITS, 0, 0, PRINT_UNITS, 0, 0],
       viewport: pdfPage.getViewport({ scale: 1, rotation: size.rotation }),
       intent: "print",
@@ -148,9 +148,7 @@ class PDFPrintService {
     this.scratchCanvas = null;
     activeService = null;
     ensureOverlay().then(function () {
-      if (overlayManager.active === dialog) {
-        overlayManager.close(dialog);
-      }
+      overlayManager.closeIfActive(dialog);
     });
   }
 
@@ -190,24 +188,27 @@ class PDFPrintService {
   useRenderedPage() {
     this.throwIfInactive();
     const img = document.createElement("img");
-    const scratchCanvas = this.scratchCanvas;
-    if ("toBlob" in scratchCanvas) {
-      scratchCanvas.toBlob(function (blob) {
-        img.src = URL.createObjectURL(blob);
-      });
-    } else {
-      img.src = scratchCanvas.toDataURL();
-    }
+    this.scratchCanvas.toBlob(blob => {
+      img.src = URL.createObjectURL(blob);
+    });
 
     const wrapper = document.createElement("div");
     wrapper.className = "printedPage";
     wrapper.append(img);
     this.printContainer.append(wrapper);
 
-    return new Promise(function (resolve, reject) {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
+    const { promise, resolve, reject } = Promise.withResolvers();
+    img.onload = resolve;
+    img.onerror = reject;
+
+    promise
+      .catch(() => {
+        // Avoid "Uncaught promise" messages in the console.
+      })
+      .then(() => {
+        URL.revokeObjectURL(img.src);
+      });
+    return promise;
   }
 
   performPrint() {
@@ -255,33 +256,33 @@ window.print = function () {
     dispatchEvent("beforeprint");
   } finally {
     if (!activeService) {
+      if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("TESTING")) {
+        // eslint-disable-next-line no-unsafe-finally
+        throw new Error("window.print() is not supported");
+      }
       console.error("Expected print service to be initialized.");
       ensureOverlay().then(function () {
-        if (overlayManager.active === dialog) {
-          overlayManager.close(dialog);
-        }
+        overlayManager.closeIfActive(dialog);
       });
-      return; // eslint-disable-line no-unsafe-finally
+    } else {
+      const activeServiceOnEntry = activeService;
+      activeService
+        .renderPages()
+        .then(() => activeServiceOnEntry.performPrint())
+        .catch(() => {
+          // Ignore any error messages.
+        })
+        .then(() => {
+          // aborts acts on the "active" print request, so we need to check
+          // whether the print request (activeServiceOnEntry) is still active.
+          // Without the check, an unrelated print request (created after
+          // aborting this print request while the pages were being generated)
+          // would be aborted.
+          if (activeServiceOnEntry.active) {
+            abort();
+          }
+        });
     }
-    const activeServiceOnEntry = activeService;
-    activeService
-      .renderPages()
-      .then(function () {
-        return activeServiceOnEntry.performPrint();
-      })
-      .catch(function () {
-        // Ignore any error messages.
-      })
-      .then(function () {
-        // aborts acts on the "active" print request, so we need to check
-        // whether the print request (activeServiceOnEntry) is still active.
-        // Without the check, an unrelated print request (created after aborting
-        // this print request while the pages were being generated) would be
-        // aborted.
-        if (activeServiceOnEntry.active) {
-          abort();
-        }
-      });
   }
 };
 

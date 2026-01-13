@@ -1,4 +1,5 @@
-import { IDENTITY_MATRIX, OPS, Util } from "../shared/util.js";
+import { OPS, Util } from "../shared/util.js";
+import { IDENTITY_MATRIX } from "../core/core_utils.js";
 // eslint-disable-next-line import/no-cycle
 import { StateManager, TextState } from "./evaluator.js";
 import { Dict } from "./primitives.js";
@@ -18,6 +19,12 @@ class BoundingBoxesCalculator {
     this.mcidArray = [];
     this.sameMcidDepth = 0;
     this.operationIndex = -1;
+  }
+
+  transformPoint(x, y, ctm) {
+    const p = [x, y];
+    Util.applyTransform(p, ctm);
+    return p;
   }
 
   // Get Top points of rectangle:
@@ -66,8 +73,9 @@ class BoundingBoxesCalculator {
     if (!this.textStateManager.state.font.vertical) {
       // Left Bottom point of text bbox
       // Save before text matrix will be changed with going through glyphs
-      [tx0, ty0] = Util.applyTransform(
-        [0, descent + rise],
+      [tx0, ty0] = this.transformPoint(
+        0,
+        descent + rise,
         this.textStateManager.state.textMatrix
       );
       // Calculate transformed height and shift to place
@@ -76,21 +84,24 @@ class BoundingBoxesCalculator {
         tx0 - this.textStateManager.state.textMatrix[4],
         ty0 - this.textStateManager.state.textMatrix[5],
       ];
-      height = Util.applyTransform(
-        [0, ascent - descent],
+      height = this.transformPoint(
+        0,
+        ascent - descent,
         this.textStateManager.state.textMatrix
       );
     } else {
-      [tx0, ty0] = Util.applyTransform(
-        [-this.textStateManager.state.fontSize / 2, rise],
+      [tx0, ty0] = this.transformPoint(
+        -this.textStateManager.state.fontSize / 2,
+        rise,
         this.textStateManager.state.textMatrix
       );
       shift = [
         tx0 - this.textStateManager.state.textMatrix[4],
         ty0 - this.textStateManager.state.textMatrix[5],
       ];
-      height = Util.applyTransform(
-        [ascent - descent, 0],
+      height = this.transformPoint(
+        ascent - descent,
+        0,
         this.textStateManager.state.textMatrix
       );
     }
@@ -176,15 +187,15 @@ class BoundingBoxesCalculator {
     ]);
 
     // Apply transform matrix to bbox
-    const [x0, y0] = Util.applyTransform([tx0, ty0], ctm);
-    const [x1, y1] = Util.applyTransform([tx1, ty1], ctm);
-    const [x2, y2] = Util.applyTransform([tx2, ty2], ctm);
-    const [x3, y3] = Util.applyTransform([tx3, ty3], ctm);
+    const [x0, y0] = this.transformPoint(tx0, ty0, ctm);
+    const [x1, y1] = this.transformPoint(tx1, ty1, ctm);
+    const [x2, y2] = this.transformPoint(tx2, ty2, ctm);
+    const [x3, y3] = this.transformPoint(tx3, ty3, ctm);
     glyphsSize = glyphsSize.map(glyphSize => [
-      ...Util.applyTransform([glyphSize[0], glyphSize[1]], ctm),
-      ...Util.applyTransform([glyphSize[2], glyphSize[3]], ctm),
-      ...Util.applyTransform([glyphSize[4], glyphSize[5]], ctm),
-      ...Util.applyTransform([glyphSize[6], glyphSize[7]], ctm),
+      ...this.transformPoint(glyphSize[0], glyphSize[1], ctm),
+      ...this.transformPoint(glyphSize[2], glyphSize[3], ctm),
+      ...this.transformPoint(glyphSize[4], glyphSize[5], ctm),
+      ...this.transformPoint(glyphSize[6], glyphSize[7], ctm),
     ]);
     let minX, maxX, minY, maxY;
     const glyphsPos = [];
@@ -266,10 +277,10 @@ class BoundingBoxesCalculator {
   getRectBoundingBox(x, y, w, h) {
     const state = this.graphicsStateManager.state;
 
-    const [x1, y1] = Util.applyTransform([x, y], state.ctm);
-    const [x2, y2] = Util.applyTransform([x + w, y], state.ctm);
-    const [x3, y3] = Util.applyTransform([x, y + h], state.ctm);
-    const [x4, y4] = Util.applyTransform([x + w, y + h], state.ctm);
+    const [x1, y1] = this.transformPoint(x, y, state.ctm);
+    const [x2, y2] = this.transformPoint(x + w, y, state.ctm);
+    const [x3, y3] = this.transformPoint(x, y + h, state.ctm);
+    const [x4, y4] = this.transformPoint(x + w, y + h, state.ctm);
 
     x = Math.min(x1, x2, x3, x4);
     y = Math.min(y1, y2, y3, y4);
@@ -300,7 +311,7 @@ class BoundingBoxesCalculator {
   getLineBoundingBox(x, y) {
     const state = this.graphicsStateManager.state;
 
-    [x, y] = Util.applyTransform([x, y], state.ctm);
+    [x, y] = this.transformPoint(x, y, state.ctm);
 
     if (state.w === null) {
       state.w = Math.abs(x - state.move_x);
@@ -387,10 +398,10 @@ class BoundingBoxesCalculator {
     const state = this.graphicsStateManager.state;
 
     if (op !== OPS.curveTo2) {
-      [x1, y1] = Util.applyTransform([x1, y1], state.ctm);
+      [x1, y1] = this.transformPoint(x1, y1, state.ctm);
     }
-    [x2, y2] = Util.applyTransform([x2, y2], state.ctm);
-    [x3, y3] = Util.applyTransform([x3, y3], state.ctm);
+    [x2, y2] = this.transformPoint(x2, y2, state.ctm);
+    [x3, y3] = this.transformPoint(x3, y3, state.ctm);
 
     const curveX = this.getCurve(x0, x1, x2, x3);
     const curveY = this.getCurve(y0, y1, y2, y3);
@@ -487,10 +498,10 @@ class BoundingBoxesCalculator {
 
   getImageBoundingBox() {
     const state = this.graphicsStateManager.state;
-    const [x0, y0] = Util.applyTransform([0, 0], state.ctm);
-    const [x1, y1] = Util.applyTransform([0, 1], state.ctm);
-    const [x2, y2] = Util.applyTransform([1, 1], state.ctm);
-    const [x3, y3] = Util.applyTransform([1, 0], state.ctm);
+    const [x0, y0] = this.transformPoint(0, 0, state.ctm);
+    const [x1, y1] = this.transformPoint(0, 1, state.ctm);
+    const [x2, y2] = this.transformPoint(1, 1, state.ctm);
+    const [x3, y3] = this.transformPoint(1, 0, state.ctm);
 
     state.x = Math.min(x0, x1, x2, x3);
     state.y = Math.min(y0, y1, y2, y3);
@@ -607,7 +618,7 @@ class BoundingBoxesCalculator {
         [
           this.graphicsStateManager.state.move_x,
           this.graphicsStateManager.state.move_y,
-        ] = Util.applyTransform(args, ctm);
+        ] = this.transformPoint(args[0], args[1], ctm);
         break;
       case OPS.lineTo:
         this.getLineBoundingBox(args[0], args[1]);

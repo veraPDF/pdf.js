@@ -5,6 +5,8 @@ body:
   - type: textarea
     attributes:
       label: Attach (recommended) or Link to PDF file
+      description: Without this information the issue may be closed without comment
+      placeholder: Please place only the PDF file in this field
     validations:
       required: true
 
@@ -14,6 +16,7 @@ body:
   - type: input
     attributes:
       label: Web browser and its version
+      description: Please ensure that it's supported, refer to [the FAQ](https://github.com/mozilla/pdf.js/wiki/Frequently-Asked-Questions#faq-support)
     validations:
       required: true
   - type: input
@@ -24,11 +27,13 @@ body:
   - type: input
     attributes:
       label: PDF.js version
+      description: Please find official releases [here](https://github.com/mozilla/pdf.js/releases)
     validations:
       required: true
   - type: dropdown
     attributes:
       label: Is the bug present in the latest PDF.js version?
+      description: Please check the [online demo](https://github.com/mozilla/pdf.js#online-demo)
       options: ["Yes", "No"]
       default: 0
     validations:

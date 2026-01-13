@@ -74,6 +74,14 @@ class IPDFLinkService {
   goToPage(val) {}
 
   /**
+   * Scrolls to a specific location in the PDF document.
+   * @param {number} pageNumber - The page number to scroll to.
+   * @param {number} x - The x-coordinate to scroll to in page coordinates.
+   * @param {number} y - The y-coordinate to scroll to in page coordinates.
+   */
+  goToXY(pageNumber, x, y) {}
+
+  /**
    * @param {HTMLAnchorElement} link
    * @param {string} url
    * @param {boolean} [newWindow]
@@ -156,9 +164,8 @@ class IDownloadManager {
    * @param {Uint8Array} data
    * @param {string} url
    * @param {string} filename
-   * @param {Object} [options]
    */
-  download(data, url, filename, options) {}
+  download(data, url, filename) {}
 }
 
 /**

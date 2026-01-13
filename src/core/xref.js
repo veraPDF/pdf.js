@@ -33,8 +33,6 @@ import { BaseStream } from "./base_stream.js";
 import { CipherTransformFactory } from "./crypto.js";
 
 class XRef {
-  #firstXRefStmPos = null;
-
   constructor(stream, pdfManager) {
     this.stream = stream;
     this.pdfManager = pdfManager;
@@ -310,18 +308,15 @@ class XRef {
     if (!("streamState" in this)) {
       // Stores state of the stream as we process it so we can resume
       // from middle of stream in case of missing data error
-      const streamParameters = stream.dict;
-      const byteWidths = streamParameters.get("W");
-      let range = streamParameters.get("Index");
-      if (!range) {
-        range = [0, streamParameters.get("Size")];
-      }
+      const { dict, pos } = stream;
+      const byteWidths = dict.get("W");
+      const range = dict.get("Index") || [0, dict.get("Size")];
 
       this.streamState = {
         entryRanges: range,
         byteWidths,
         entryNum: 0,
-        streamPos: stream.pos,
+        streamPos: pos,
       };
     }
     this.readXRefStream(stream);
@@ -680,6 +675,36 @@ class XRef {
     if (this.topDict) {
       return this.topDict;
     }
+
+    // When no trailer dictionary candidate exists, try picking the first
+    // dictionary that contains a /Root entry (fixes issue18986.pdf).
+    if (!trailerDicts.length) {
+      // In case, this.entries is a sparse array we don't want to
+      // iterate over empty entries so we use the `in` operator instead of
+      // using for..of on entries() or a for with the array length.
+      for (const num in this.entries) {
+        if (!Object.hasOwn(this.entries, num)) {
+          continue;
+        }
+        const entry = this.entries[num];
+        const ref = Ref.get(parseInt(num), entry.gen);
+        let obj;
+
+        try {
+          obj = this.fetch(ref);
+        } catch {
+          continue;
+        }
+
+        if (obj instanceof BaseStream) {
+          obj = obj.dict;
+        }
+        if (obj instanceof Dict && obj.has("Root")) {
+          return obj;
+        }
+      }
+    }
+
     // nothing helps
     throw new InvalidPDFException("Invalid PDF structure.");
   }
@@ -727,7 +752,6 @@ class XRef {
             // (possible infinite recursion)
             this._xrefStms.add(obj);
             this.startXRefQueue.push(obj);
-            this.#firstXRefStmPos ??= obj;
           }
         } else if (Number.isInteger(obj)) {
           // Parse in-stream XRef
@@ -776,13 +800,6 @@ class XRef {
     throw new XRefParseException();
   }
 
-  get lastXRefStreamPos() {
-    return (
-      this.#firstXRefStmPos ??
-      (this._xrefStms.size > 0 ? Math.max(...this._xrefStms) : null)
-    );
-  }
-
   getEntry(i) {
     const xrefEntry = this.entries[i];
     if (xrefEntry && !xrefEntry.free && xrefEntry.offset) {
@@ -820,7 +837,6 @@ class XRef {
 
     if (xrefEntry === null) {
       // The referenced entry can be free.
-      this._cacheMap.set(num, xrefEntry);
       return xrefEntry;
     }
     // Prevent circular references, in corrupt PDF documents, from hanging the
@@ -940,6 +956,15 @@ class XRef {
         );
       }
       nums[i] = num;
+
+      // The entry in the xref table is the object number followed by the index.
+      // So if index (gen number) is not the same as the index (i), we fix it
+      // (fixes bug 1978317).
+      const entry = this.getEntry(num);
+      if (entry?.offset === tableOffset && entry.gen !== i) {
+        entry.gen = i;
+      }
+
       offsets[i] = offset;
     }
 

@@ -16,6 +16,7 @@
 /** @typedef {import("./event_utils").EventBus} EventBus */
 /** @typedef {import("./interfaces").IPDFLinkService} IPDFLinkService */
 
+import { isValidExplicitDest } from "pdfjs-lib";
 import { parseQueryString } from "./ui_utils.js";
 
 const DEFAULT_LINK_REL = "noopener noreferrer nofollow";
@@ -191,6 +192,18 @@ class PDFLinkService {
       destArray: explicitDest,
       ignoreDestinationZoom: this._ignoreDestinationZoom,
     });
+
+    const ac = new AbortController();
+    this.eventBus._on(
+      "textlayerrendered",
+      evt => {
+        if (evt.pageNumber === pageNumber) {
+          evt.source.textLayer.div.focus();
+          ac.abort();
+        }
+      },
+      { signal: ac.signal }
+    );
   }
 
   /**
@@ -224,6 +237,22 @@ class PDFLinkService {
     }
 
     this.pdfViewer.scrollPageIntoView({ pageNumber });
+  }
+
+  /**
+   * Scrolls to a specific location in the PDF document.
+   * @param {number} pageNumber - The page number to scroll to.
+   * @param {number} x - The x-coordinate to scroll to in page coordinates.
+   * @param {number} y - The y-coordinate to scroll to in page coordinates.
+   * @param {Object} [options]
+   */
+  goToXY(pageNumber, x, y, options = {}) {
+    this.pdfViewer.scrollPageIntoView({
+      pageNumber,
+      destArray: [null, { name: "XYZ" }, x, y],
+      ignoreDestinationZoom: true,
+      ...options,
+    });
   }
 
   /**
@@ -415,7 +444,7 @@ class PDFLinkService {
       }
     } catch {}
 
-    if (typeof dest === "string" || PDFLinkService.#isValidExplicitDest(dest)) {
+    if (typeof dest === "string" || isValidExplicitDest(dest)) {
       this.goToDestination(dest);
       return;
     }
@@ -485,59 +514,6 @@ class PDFLinkService {
     this.pdfViewer.optionalContentConfigPromise = Promise.resolve(
       optionalContentConfig
     );
-  }
-
-  static #isValidExplicitDest(dest) {
-    if (!Array.isArray(dest) || dest.length < 2) {
-      return false;
-    }
-    const [page, zoom, ...args] = dest;
-    if (
-      !(
-        typeof page === "object" &&
-        Number.isInteger(page?.num) &&
-        Number.isInteger(page?.gen)
-      ) &&
-      !Number.isInteger(page)
-    ) {
-      return false;
-    }
-    if (!(typeof zoom === "object" && typeof zoom?.name === "string")) {
-      return false;
-    }
-    let allowNull = true;
-    switch (zoom.name) {
-      case "XYZ":
-        if (args.length !== 3) {
-          return false;
-        }
-        break;
-      case "Fit":
-      case "FitB":
-        return args.length === 0;
-      case "FitH":
-      case "FitBH":
-      case "FitV":
-      case "FitBV":
-        if (args.length !== 1) {
-          return false;
-        }
-        break;
-      case "FitR":
-        if (args.length !== 4) {
-          return false;
-        }
-        allowNull = false;
-        break;
-      default:
-        return false;
-    }
-    for (const arg of args) {
-      if (!(typeof arg === "number" || (allowNull && arg === null))) {
-        return false;
-      }
-    }
-    return true;
   }
 }
 

@@ -17,7 +17,10 @@ import { bytesToString, shadow, unreachable } from "../shared/util.js";
 
 class BaseStream {
   constructor() {
-    if (this.constructor === BaseStream) {
+    if (
+      (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) &&
+      this.constructor === BaseStream
+    ) {
       unreachable("Cannot initialize BaseStream.");
     }
   }
@@ -61,8 +64,16 @@ class BaseStream {
     return false;
   }
 
+  get isAsyncDecoder() {
+    return false;
+  }
+
   get canAsyncDecodeImageFromBuffer() {
     return false;
+  }
+
+  async getTransferableImage() {
+    return null;
   }
 
   peekByte() {

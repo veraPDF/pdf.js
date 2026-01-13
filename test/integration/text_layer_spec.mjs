@@ -18,6 +18,7 @@ import {
   closeSinglePage,
   getSpanRectFromText,
   loadAndWait,
+  waitForEvent,
 } from "./test_utils.mjs";
 import { startBrowser } from "../test.mjs";
 
@@ -38,18 +39,27 @@ describe("Text layer", () => {
     }
 
     function middlePosition(rect) {
-      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      return {
+        x: Math.round(rect.x + rect.width / 2),
+        y: Math.round(rect.y + rect.height / 2),
+      };
     }
 
     function middleLeftPosition(rect) {
-      return { x: rect.x + 1, y: rect.y + rect.height / 2 };
+      return {
+        x: Math.round(rect.x + 1),
+        y: Math.round(rect.y + rect.height / 2),
+      };
     }
 
     function belowEndPosition(rect) {
-      return { x: rect.x + rect.width, y: rect.y + rect.height * 1.5 };
+      return {
+        x: Math.round(rect.x + rect.width),
+        y: Math.round(rect.y + rect.height * 1.5),
+      };
     }
 
-    beforeAll(() => {
+    beforeEach(() => {
       jasmine.addAsyncMatchers({
         // Check that a page has a selection containing the given text, with
         // some tolerance for extra characters before/after.
@@ -98,111 +108,329 @@ describe("Text layer", () => {
     });
 
     describe("using mouse", () => {
-      let pages;
+      describe("doesn't jump when hovering on an empty area", () => {
+        let pages;
 
-      beforeAll(async () => {
-        pages = await loadAndWait(
-          "tracemonkey.pdf",
-          `.page[data-page-number = "1"] .endOfContent`
-        );
-      });
-      afterAll(async () => {
-        await closePages(pages);
-      });
+        beforeEach(async () => {
+          pages = await loadAndWait(
+            "tracemonkey.pdf",
+            `.page[data-page-number = "1"] .endOfContent`
+          );
+        });
 
-      it("doesn't jump when hovering on an empty area", async () => {
-        await Promise.all(
-          pages.map(async ([browserName, page]) => {
-            const [positionStart, positionEnd] = await Promise.all([
-              getSpanRectFromText(
+        afterEach(async () => {
+          await closePages(pages);
+        });
+
+        it("in a single page", async () => {
+          await Promise.all(
+            pages.map(async ([browserName, page]) => {
+              const [positionStart, positionEnd] = await Promise.all([
+                getSpanRectFromText(
+                  page,
+                  1,
+                  "(frequently executed) bytecode sequences, records"
+                ).then(middlePosition),
+                getSpanRectFromText(
+                  page,
+                  1,
+                  "them, and compiles them to fast native code. We call such a se-"
+                ).then(belowEndPosition),
+              ]);
+
+              await page.mouse.move(positionStart.x, positionStart.y);
+              await page.mouse.down();
+              await moveInSteps(page, positionStart, positionEnd, 20);
+              await page.mouse.up();
+
+              await expectAsync(page)
+                .withContext(`In ${browserName}`)
+                .toHaveRoughlySelected(
+                  "code sequences, records\n" +
+                    "them, and compiles them to fast native code. We call suc"
+                );
+            })
+          );
+        });
+
+        it("across multiple pages", async () => {
+          await Promise.all(
+            pages.map(async ([browserName, page]) => {
+              const scrollTarget = await getSpanRectFromText(
                 page,
                 1,
-                "(frequently executed) bytecode sequences, records"
-              ).then(middlePosition),
-              getSpanRectFromText(
-                page,
-                1,
-                "them, and compiles them to fast native code. We call such a se-"
-              ).then(belowEndPosition),
-            ]);
-
-            await page.mouse.move(positionStart.x, positionStart.y);
-            await page.mouse.down();
-            await moveInSteps(page, positionStart, positionEnd, 20);
-            await page.mouse.up();
-
-            await expectAsync(page)
-              .withContext(`In ${browserName}`)
-              .toHaveRoughlySelected(
-                "code sequences, records\n" +
-                  "them, and compiles them to fast native code. We call suc"
+                "Unlike method-based dynamic compilers, our dynamic com-"
               );
-          })
-        );
+              await page.evaluate(top => {
+                document.getElementById("viewerContainer").scrollTop = top;
+              }, scrollTarget.y - 50);
+
+              const [
+                positionStartPage1,
+                positionEndPage1,
+                positionStartPage2,
+                positionEndPage2,
+              ] = await Promise.all([
+                getSpanRectFromText(
+                  page,
+                  1,
+                  "Each compiled trace covers one path through the program with"
+                ).then(middlePosition),
+                getSpanRectFromText(
+                  page,
+                  1,
+                  "or that the same types will occur in subsequent loop iterations."
+                ).then(middlePosition),
+                getSpanRectFromText(
+                  page,
+                  2,
+                  "Hence, recording and compiling a trace"
+                ).then(middlePosition),
+                getSpanRectFromText(
+                  page,
+                  2,
+                  "cache. Alternatively, the VM could simply stop tracing, and give up"
+                ).then(belowEndPosition),
+              ]);
+
+              await page.mouse.move(positionStartPage1.x, positionStartPage1.y);
+              await page.mouse.down();
+
+              await moveInSteps(page, positionStartPage1, positionEndPage1, 20);
+              await moveInSteps(page, positionEndPage1, positionStartPage2, 20);
+
+              await expectAsync(page)
+                .withContext(`In ${browserName}, first selection`)
+                .toHaveRoughlySelected(
+                  /path through the program .*Hence, recording a/s
+                );
+
+              await moveInSteps(page, positionStartPage2, positionEndPage2, 20);
+              await page.mouse.up();
+
+              await expectAsync(page)
+                .withContext(`In ${browserName}, second selection`)
+                .toHaveRoughlySelected(
+                  /path through.*Hence, recording and .* tracing, and give/s
+                );
+            })
+          );
+        });
       });
 
-      it("doesn't jump when hovering on an empty area (multi-page)", async () => {
-        await Promise.all(
-          pages.map(async ([browserName, page]) => {
-            const scrollTarget = await getSpanRectFromText(
-              page,
-              1,
-              "Unlike method-based dynamic compilers, our dynamic com-"
-            );
-            await page.evaluate(top => {
-              document.getElementById("viewerContainer").scrollTop = top;
-            }, scrollTarget.y - 50);
+      describe("doesn't jump when hovering on an empty area, with .markedContent", () => {
+        let pages;
 
-            const [
-              positionStartPage1,
-              positionEndPage1,
-              positionStartPage2,
-              positionEndPage2,
-            ] = await Promise.all([
-              getSpanRectFromText(
+        beforeEach(async () => {
+          pages = await loadAndWait(
+            "chrome-text-selection-markedContent.pdf",
+            `.page[data-page-number = "1"] .endOfContent`
+          );
+        });
+
+        afterEach(async () => {
+          await closePages(pages);
+        });
+
+        it("in per-character selection mode", async () => {
+          await Promise.all(
+            pages.map(async ([browserName, page]) => {
+              const [positionStart, positionEnd] = await Promise.all([
+                getSpanRectFromText(
+                  page,
+                  1,
+                  "strengthen in the coming quarters as the railway projects under"
+                ).then(middlePosition),
+                getSpanRectFromText(
+                  page,
+                  1,
+                  "development enter the construction phase (estimated at around"
+                ).then(belowEndPosition),
+              ]);
+
+              await page.mouse.move(positionStart.x, positionStart.y);
+              await page.mouse.down();
+              await moveInSteps(page, positionStart, positionEnd, 20);
+              await page.mouse.up();
+
+              await expectAsync(page)
+                .withContext(`In ${browserName}`)
+                .toHaveRoughlySelected(
+                  "rs as the railway projects under\n" +
+                    "development enter the construction phase (estimated at "
+                );
+            })
+          );
+        });
+
+        it("in per-word selection mode", async () => {
+          await Promise.all(
+            pages.map(async ([browserName, page]) => {
+              const [positionStart, positionEnd] = await Promise.all([
+                getSpanRectFromText(
+                  page,
+                  1,
+                  "strengthen in the coming quarters as the railway projects under"
+                ).then(middlePosition),
+                getSpanRectFromText(
+                  page,
+                  1,
+                  "development enter the construction phase (estimated at around"
+                ).then(belowEndPosition),
+              ]);
+
+              // Puppeteer doesn't support emulating "double click and hold" for
+              // WebDriver BiDi, so we must manually dispatch a protocol action
+              // (see https://github.com/puppeteer/puppeteer/issues/13745).
+              await page.mainFrame().browsingContext.performActions([
+                {
+                  type: "pointer",
+                  id: "__puppeteer_mouse",
+                  actions: [
+                    { type: "pointerMove", ...positionStart },
+                    { type: "pointerDown", button: 0 },
+                    { type: "pointerUp", button: 0 },
+                    { type: "pointerDown", button: 0 },
+                  ],
+                },
+              ]);
+              await moveInSteps(page, positionStart, positionEnd, 20);
+              await page.mouse.up();
+
+              await expectAsync(page)
+                .withContext(`In ${browserName}`)
+                .toHaveRoughlySelected(
+                  "quarters as the railway projects under\n" +
+                    "development enter the construction phase (estimated at around"
+                );
+            })
+          );
+        });
+      });
+
+      describe("when selecting over a link", () => {
+        let pages;
+
+        beforeEach(async () => {
+          pages = await loadAndWait(
+            "annotation-link-text-popup.pdf",
+            `.page[data-page-number = "1"] .endOfContent`
+          );
+        });
+
+        afterEach(async () => {
+          await closePages(pages);
+        });
+
+        it("allows selecting within the link", async () => {
+          await Promise.all(
+            pages.map(async ([browserName, page]) => {
+              const [positionStart, positionEnd] = await Promise.all([
+                getSpanRectFromText(page, 1, "Link").then(middleLeftPosition),
+                getSpanRectFromText(page, 1, "mozilla.org").then(
+                  middlePosition
+                ),
+              ]);
+
+              await page.mouse.move(positionStart.x, positionStart.y);
+              await page.mouse.down();
+              await moveInSteps(page, positionStart, positionEnd, 20);
+              await page.mouse.up();
+
+              await expectAsync(page)
+                .withContext(`In ${browserName}`)
+                .toHaveRoughlySelected("Link\nmozil");
+            })
+          );
+        });
+
+        it("allows selecting within the link when going backwards", async () => {
+          await Promise.all(
+            pages.map(async ([browserName, page]) => {
+              const [positionStart, positionEnd] = await Promise.all([
+                getSpanRectFromText(page, 1, "Text").then(middlePosition),
+                getSpanRectFromText(page, 1, "mozilla.org").then(
+                  middlePosition
+                ),
+              ]);
+
+              await page.mouse.move(positionStart.x, positionStart.y);
+              await page.mouse.down();
+              await moveInSteps(page, positionStart, positionEnd, 20);
+              await page.mouse.up();
+
+              await expectAsync(page)
+                .withContext(`In ${browserName}`)
+                .toHaveRoughlySelected("a.org\nTe");
+            })
+          );
+        });
+
+        it("allows clicking the link after selecting", async () => {
+          await Promise.all(
+            pages.map(async ([browserName, page]) => {
+              const [positionStart, positionEnd] = await Promise.all([
+                getSpanRectFromText(page, 1, "Link").then(middleLeftPosition),
+                getSpanRectFromText(page, 1, "mozilla.org").then(
+                  middlePosition
+                ),
+              ]);
+
+              await page.mouse.move(positionStart.x, positionStart.y);
+              await page.mouse.down();
+              await moveInSteps(page, positionStart, positionEnd, 20);
+              await page.mouse.up();
+
+              await waitForEvent({
                 page,
-                1,
-                "Each compiled trace covers one path through the program with"
-              ).then(middlePosition),
-              getSpanRectFromText(
+                eventName: "click",
+                action: () => page.mouse.click(positionEnd.x, positionEnd.y),
+                selector: "#pdfjs_internal_id_8R",
+                validator: e => {
+                  // Don't navigate to the link destination: the `click` event
+                  // firing is enough validation that the link can be clicked.
+                  e.preventDefault();
+                  return true;
+                },
+              });
+            })
+          );
+        });
+
+        it("allows clicking the link after changing selection with the keyboard", async () => {
+          await Promise.all(
+            pages.map(async ([browserName, page]) => {
+              const [positionStart, positionEnd] = await Promise.all([
+                getSpanRectFromText(page, 1, "Link").then(middleLeftPosition),
+                getSpanRectFromText(page, 1, "mozilla.org").then(
+                  middlePosition
+                ),
+              ]);
+
+              await page.mouse.move(positionStart.x, positionStart.y);
+              await page.mouse.down();
+              await moveInSteps(page, positionStart, positionEnd, 20);
+              await page.mouse.up();
+
+              await page.keyboard.down("Shift");
+              await page.keyboard.press("ArrowRight");
+              await page.keyboard.up("Shift");
+
+              await waitForEvent({
                 page,
-                1,
-                "or that the same types will occur in subsequent loop iterations."
-              ).then(middlePosition),
-              getSpanRectFromText(
-                page,
-                2,
-                "Hence, recording and compiling a trace"
-              ).then(middlePosition),
-              getSpanRectFromText(
-                page,
-                2,
-                "cache. Alternatively, the VM could simply stop tracing, and give up"
-              ).then(belowEndPosition),
-            ]);
-
-            await page.mouse.move(positionStartPage1.x, positionStartPage1.y);
-            await page.mouse.down();
-
-            await moveInSteps(page, positionStartPage1, positionEndPage1, 20);
-            await moveInSteps(page, positionEndPage1, positionStartPage2, 20);
-
-            await expectAsync(page)
-              .withContext(`In ${browserName}, first selection`)
-              .toHaveRoughlySelected(
-                /path through the program .*Hence, recording a/s
-              );
-
-            await moveInSteps(page, positionStartPage2, positionEndPage2, 20);
-            await page.mouse.up();
-
-            await expectAsync(page)
-              .withContext(`In ${browserName}, second selection`)
-              .toHaveRoughlySelected(
-                /path through.*Hence, recording and .* tracing, and give/s
-              );
-          })
-        );
+                eventName: "click",
+                action: () => page.mouse.click(positionEnd.x, positionEnd.y),
+                selector: "#pdfjs_internal_id_8R",
+                validator: e => {
+                  // Don't navigate to the link destination: the `click` event
+                  // firing is enough validation that the link can be clicked.
+                  e.preventDefault();
+                  return true;
+                },
+              });
+            })
+          );
+        });
       });
     });
 
@@ -210,7 +438,7 @@ describe("Text layer", () => {
       let browser;
       let page;
 
-      beforeAll(async () => {
+      beforeEach(async () => {
         // Chrome does not support simulating caret-based selection, so this
         // test only runs in Firefox.
         browser = await startBrowser({
@@ -231,7 +459,8 @@ describe("Text layer", () => {
           { timeout: 0 }
         );
       });
-      afterAll(async () => {
+
+      afterEach(async () => {
         await closeSinglePage(page);
         await browser.close();
       });
@@ -284,7 +513,7 @@ describe("Text layer", () => {
 
         await expectAsync(page)
           .withContext(`second selection`)
-          .toHaveRoughlySelected(/frequently .* We call such a se/s);
+          .toHaveRoughlySelected(/frequently .* We call such a s/s);
 
         await page.mouse.down();
         await moveInSteps(page, intermediateCaretPos, finalCaretPos, 20);
@@ -292,7 +521,7 @@ describe("Text layer", () => {
 
         await expectAsync(page)
           .withContext(`third selection`)
-          .toHaveRoughlySelected(/frequently .* We call such a se/s);
+          .toHaveRoughlySelected(/frequently .* We call such a s/s);
       });
     });
   });
@@ -301,7 +530,7 @@ describe("Text layer", () => {
     let browser;
     let page;
 
-    beforeAll(async () => {
+    beforeEach(async () => {
       // Only testing in Firefox because, while Chrome has a setting similar to
       // font.minimum-size.x-western, it is not exposed through its API.
       browser = await startBrowser({
@@ -320,7 +549,7 @@ describe("Text layer", () => {
       );
     });
 
-    afterAll(async () => {
+    afterEach(async () => {
       await closeSinglePage(page);
       await browser.close();
     });
