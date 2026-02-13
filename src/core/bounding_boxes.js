@@ -507,6 +507,8 @@ class BoundingBoxesCalculator {
     state.y = Math.min(y0, y1, y2, y3);
     state.w = Math.max(x0, x1, x2, x3) - state.x;
     state.h = Math.max(y0, y1, y2, y3) - state.y;
+
+    this.operationArray[this.operationIndex] = [[state.x, state.y, state.w, state.h]];
   }
 
   parseOperator(fn, args) {
@@ -712,9 +714,21 @@ class BoundingBoxesCalculator {
         }
         break;
       case OPS.paintXObject:
-        if (args[0] === "Image") {
+        const [type, bboxes] = args;
+        if (type === "Image") {
           this.getImageBoundingBox();
           this.saveGraphicsBoundingBox();
+        } else if (type === "Form" && typeof bboxes === "object") {
+          const opArr = Object.values(bboxes).map((b) => {
+            let { contentItems, contentItem } = b;
+            while (contentItems?.length) {
+              [{ contentItems, contentItem }] = contentItems;
+            }
+            if (contentItem?.x == null) return [];
+            const { x, y, w, h } = contentItem;
+            return [x, y, w, h];
+          });
+          this.operationArray[this.operationIndex] = opArr;
         }
         break;
       case OPS.showText:

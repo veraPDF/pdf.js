@@ -1873,11 +1873,15 @@ class PartialEvaluator {
                       boundingBoxCalculator.textState,
                       boundingBoxCalculator.graphicsState
                     )
-                    .then(function ([boundingBoxesByMCID]) {
+                    .then(function ([boundingBoxesByMCID, _, boundingBoxesWithoutMCID]) {
                       boundingBoxCalculator.addRefBoundingBoxes(
                         xobj.dict.objId,
                         boundingBoxesByMCID
                       );
+                      boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                        type.name,
+                        boundingBoxesWithoutMCID,
+                      ]);
                       stateManager.restore();
                       boundingBoxCalculator.restoreState();
                       resolveXObject();
