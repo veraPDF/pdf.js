@@ -1183,6 +1183,16 @@ class CipherTransformFactory {
     }
   }
 
+  getEncryptionDictionary() {
+    const encryptionDict = {};
+    ["V", "R", "O", "U", "OE", "UE", "P"]
+      .forEach((key) => {
+        const value = this.dict.get(key);
+        if (value != null) encryptionDict[key] = value;
+      });
+    return encryptionDict;
+  }
+
   createCipherTransform(num, gen) {
     if (this.algorithm === 4 || this.algorithm === 5) {
       return new CipherTransform(

@@ -1067,6 +1067,10 @@ class PDFDocument {
     };
   }
 
+  get encryptionDictionary() {
+    return shadow(this, "encryptionDictionary", this.xref.getEncryptionDictionary());
+  }
+
   parse(recoveryMode) {
     this.xref.parse(recoveryMode);
     this.catalog = new Catalog(this.pdfManager, this.xref);

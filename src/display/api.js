@@ -993,6 +993,15 @@ class PDFDocumentProxy {
   }
 
   /**
+   * @returns {Promise<Object | null>} A promise that is resolved with
+   *   a object that contains the encryption dictionary fields for the PDF
+   *   document, or `null` when no encryption dictionary values are present in the PDF file.
+   */
+  getEncryptionDictionary() {
+    return this._transport.getEncryptionDictionary();
+  }
+
+  /**
    * @typedef {Object} MarkInfo
    * Properties correspond to Table 321 of the PDF 32000-1:2008 spec.
    * @property {boolean} Marked
@@ -3055,6 +3064,10 @@ class WorkerTransport {
       }));
     this.#methodPromises.set(name, promise);
     return promise;
+  }
+
+  getEncryptionDictionary() {
+    return this.messageHandler.sendWithPromise("GetEncryptionDictionary", null);
   }
 
   getMarkInfo() {

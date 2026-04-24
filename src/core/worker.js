@@ -519,6 +519,10 @@ class WorkerMessageHandler {
       ]);
     });
 
+    handler.on("GetEncryptionDictionary", function (data) {
+      return pdfManager.ensureDoc("encryptionDictionary");
+    });
+
     handler.on("GetMarkInfo", function (data) {
       return pdfManager.ensureCatalog("markInfo");
     });
