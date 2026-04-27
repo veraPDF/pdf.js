@@ -2131,6 +2131,10 @@ class ExtendedPDFDocument extends PDFDocument {
   get structureTree() {
     return shadow(this, "structureTree", this.catalog.structureTree);
   }
+
+  get fonts() {
+    return shadow(this, "fonts", this.catalog.fonts);
+  }
 }
 
 export { Page, ExtendedPDFDocument as PDFDocument };

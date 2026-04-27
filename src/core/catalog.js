@@ -1990,6 +1990,200 @@ class ExtendedCatalog extends Catalog {
     }
     return shadow(this, "structureTree", structureTree);
   }
+
+  resolveFontInfo(fontObj, fontName) {
+    let actualFont = fontObj;
+    let isComposite = false;
+    let cidFontType = null;
+    let normalizedSubtype = null;
+
+    try {
+      const subtype = fontObj.get("Subtype");
+      const subtypeStr =
+        // eslint-disable-next-line no-nested-ternary
+        subtype instanceof Name
+          ? subtype.name
+          : typeof subtype === "string"
+            ? subtype
+            : null;
+
+      if (subtypeStr === "Type0") {
+        isComposite = true;
+
+        const descendantFonts = fontObj.get("DescendantFonts");
+
+        if (Array.isArray(descendantFonts) && descendantFonts.length > 0) {
+          const cidFont = this.xref.fetchIfRef(descendantFonts[0]);
+
+          if (cidFont instanceof Dict) {
+            actualFont = cidFont;
+
+            const cidSubtype = cidFont.get("Subtype");
+            const cidSubtypeStr =
+              // eslint-disable-next-line no-nested-ternary
+              cidSubtype instanceof Name
+                ? cidSubtype.name
+                : typeof cidSubtype === "string"
+                  ? cidSubtype
+                  : null;
+
+            if (cidSubtypeStr) {
+              cidFontType = cidSubtypeStr;
+
+              if (cidFontType === "CIDFontType0") {
+                normalizedSubtype = "Type1 (CID)";
+              } else if (cidFontType === "CIDFontType2") {
+                normalizedSubtype = "TrueType (CID)";
+              } else {
+                normalizedSubtype = cidFontType;
+              }
+            }
+          }
+        }
+
+        if (!normalizedSubtype) {
+          normalizedSubtype = subtypeStr;
+        }
+      } else if (subtypeStr) {
+        normalizedSubtype = subtypeStr;
+      }
+
+      let descriptor = actualFont.get("FontDescriptor");
+
+      if (!(descriptor instanceof Dict) && !isComposite) {
+        descriptor = fontObj.get("FontDescriptor");
+      }
+
+      return {
+        descriptor,
+        isComposite,
+        cidFontType,
+        normalizedSubtype,
+      };
+    } catch (e) {
+      console.error(`Error resolving font info for ${fontName}: ${e.message}`);
+
+      return {
+        descriptor: fontObj.get("FontDescriptor"),
+        isComposite: false,
+        cidFontType: null,
+        normalizedSubtype: null,
+      };
+    }
+  }
+
+  collectFonts() {
+    const fontsList = [];
+    const seenRefs = new Set();
+
+    try {
+      for (let pageIndex = 0; pageIndex < this.pages.length; pageIndex++) {
+        const pageRef = this.pages[pageIndex];
+        const pageObj = this.xref.fetch(pageRef);
+
+        if (!(pageObj instanceof Dict)) {
+          continue;
+        }
+
+        let resources = pageObj.get("Resources");
+        if (!resources) {
+          let parent = pageObj.get("Parent");
+          while (parent instanceof Dict && !resources) {
+            resources = parent.get("Resources");
+            parent = parent.get("Parent");
+          }
+        }
+
+        if (!(resources instanceof Dict)) {
+          continue;
+        }
+
+        const fontDict = resources.get("Font");
+        if (!(fontDict instanceof Dict)) {
+          continue;
+        }
+
+        for (const [fontName, fontVal] of fontDict) {
+          try {
+            const fontRef = fontDict.getRaw(fontName);
+            const refKey =
+              fontRef instanceof Ref ? fontRef.toString() : fontName;
+
+            if (seenRefs.has(refKey)) {
+              continue;
+            }
+            seenRefs.add(refKey);
+
+            const fontObj = this.xref.fetchIfRef(fontVal);
+            if (!(fontObj instanceof Dict)) {
+              continue;
+            }
+
+            // Resolve composite fonts and get the actual font info
+            const { descriptor, isComposite, cidFontType, normalizedSubtype } =
+              this.resolveFontInfo(fontObj, fontName);
+
+            const fontInfo = {
+              name: fontName,
+              pageIndex,
+              ref: fontRef instanceof Ref ? fontRef : null,
+              type: isComposite ? "Type0" : normalizedSubtype,
+              subtype: normalizedSubtype,
+              cidFontType,
+              baseFont: null,
+              encoding: null,
+              isSubset: false,
+              isEmbedded: false,
+              isComposite,
+            };
+
+            if (fontObj.has("BaseFont")) {
+              const baseFont = fontObj.get("BaseFont");
+              if (baseFont instanceof Name) {
+                fontInfo.baseFont = baseFont.name;
+              } else if (typeof baseFont === "string") {
+                fontInfo.baseFont = baseFont;
+              }
+            }
+
+            if (fontObj.has("Encoding")) {
+              const encoding = fontObj.get("Encoding");
+              if (encoding instanceof Name) {
+                fontInfo.encoding = encoding.name;
+              } else if (typeof encoding === "string") {
+                fontInfo.encoding = encoding;
+              }
+            }
+
+            if (descriptor instanceof Dict) {
+              const fontFile =
+                descriptor.get("FontFile") ||
+                descriptor.get("FontFile2") ||
+                descriptor.get("FontFile3");
+              fontInfo.isEmbedded = !!fontFile;
+            }
+
+            fontInfo.isSubset = fontInfo.baseFont
+              ? /^[A-Z0-9]{1,6}\+/.test(fontInfo.baseFont)
+              : false;
+
+            fontsList.push(fontInfo);
+          } catch {
+            continue;
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to collect fonts: ${e.message}`);
+    }
+
+    return fontsList;
+  }
+
+  get fonts() {
+    const fonts = this.collectFonts();
+    return shadow(this, "fonts", fonts && fonts.length > 0 ? fonts : null);
+  }
 }
 
 export { ExtendedCatalog as Catalog };
