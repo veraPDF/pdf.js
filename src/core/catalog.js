@@ -1991,13 +1991,13 @@ class ExtendedCatalog extends Catalog {
     return shadow(this, "structureTree", structureTree);
   }
 
-  getSubtypeStr(fontObj) {
-    const subtype = fontObj.get("Subtype");
-    if (subtype instanceof Name) {
-      return subtype.name;
+  getFieldValueStr(fontObj, key) {
+    const value = fontObj.get(key);
+    if (value instanceof Name) {
+      return value.name;
     }
-    if (typeof subtype === "string") {
-      return subtype;
+    if (typeof value === "string") {
+      return value;
     }
     return null;
   }
@@ -2013,7 +2013,7 @@ class ExtendedCatalog extends Catalog {
     let isSubset = false;
 
     try {
-      const subtype = this.getSubtypeStr(fontObj);
+      const subtype = this.getFieldValueStr(fontObj, "Subtype");
 
       if (subtype === "Type0") {
         isComposite = true;
@@ -2026,7 +2026,7 @@ class ExtendedCatalog extends Catalog {
           if (cidFont instanceof Dict) {
             actualFont = cidFont;
 
-            const cidSubtype = this.getSubtypeStr(cidFont);
+            const cidSubtype = this.getFieldValueStr(cidFont, "Subtype");
 
             if (cidSubtype) {
               cidFontType = cidSubtype;
@@ -2056,21 +2056,11 @@ class ExtendedCatalog extends Catalog {
       }
 
       if (fontObj.has("BaseFont")) {
-        const BaseFont = fontObj.get("BaseFont");
-        if (BaseFont instanceof Name) {
-          baseFont = BaseFont.name;
-        } else if (typeof BaseFont === "string") {
-          baseFont = BaseFont;
-        }
+        baseFont = this.getFieldValueStr(fontObj, "BaseFont");
       }
 
       if (fontObj.has("Encoding")) {
-        const Encoding = fontObj.get("Encoding");
-        if (Encoding instanceof Name) {
-          encoding = Encoding.name;
-        } else if (typeof Encoding === "string") {
-          encoding = Encoding;
-        }
+        encoding = this.getFieldValueStr(fontObj, "Encoding");
       }
 
       if (descriptor instanceof Dict) {
