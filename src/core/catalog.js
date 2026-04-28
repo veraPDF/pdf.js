@@ -1991,23 +1991,31 @@ class ExtendedCatalog extends Catalog {
     return shadow(this, "structureTree", structureTree);
   }
 
+  getSubtypeStr(fontObj) {
+    const subtype = fontObj.get("Subtype");
+    if (subtype instanceof Name) {
+      return subtype.name;
+    }
+    if (typeof subtype === "string") {
+      return subtype;
+    }
+    return null;
+  }
+
   resolveFontInfo(fontObj, fontName) {
     let actualFont = fontObj;
-    let isComposite = false;
     let cidFontType = null;
     let normalizedSubtype = null;
+    let baseFont = null;
+    let encoding = null;
+    let isEmbedded = false;
+    let isComposite = false;
+    let isSubset = false;
 
     try {
-      const subtype = fontObj.get("Subtype");
-      const subtypeStr =
-        // eslint-disable-next-line no-nested-ternary
-        subtype instanceof Name
-          ? subtype.name
-          : typeof subtype === "string"
-            ? subtype
-            : null;
+      const subtype = this.getSubtypeStr(fontObj);
 
-      if (subtypeStr === "Type0") {
+      if (subtype === "Type0") {
         isComposite = true;
 
         const descendantFonts = fontObj.get("DescendantFonts");
@@ -2018,17 +2026,10 @@ class ExtendedCatalog extends Catalog {
           if (cidFont instanceof Dict) {
             actualFont = cidFont;
 
-            const cidSubtype = cidFont.get("Subtype");
-            const cidSubtypeStr =
-              // eslint-disable-next-line no-nested-ternary
-              cidSubtype instanceof Name
-                ? cidSubtype.name
-                : typeof cidSubtype === "string"
-                  ? cidSubtype
-                  : null;
+            const cidSubtype = this.getSubtypeStr(cidFont);
 
-            if (cidSubtypeStr) {
-              cidFontType = cidSubtypeStr;
+            if (cidSubtype) {
+              cidFontType = cidSubtype;
 
               if (cidFontType === "CIDFontType0") {
                 normalizedSubtype = "Type1 (CID)";
@@ -2042,10 +2043,10 @@ class ExtendedCatalog extends Catalog {
         }
 
         if (!normalizedSubtype) {
-          normalizedSubtype = subtypeStr;
+          normalizedSubtype = subtype;
         }
-      } else if (subtypeStr) {
-        normalizedSubtype = subtypeStr;
+      } else if (subtype) {
+        normalizedSubtype = subtype;
       }
 
       let descriptor = actualFont.get("FontDescriptor");
@@ -2054,20 +2055,54 @@ class ExtendedCatalog extends Catalog {
         descriptor = fontObj.get("FontDescriptor");
       }
 
+      if (fontObj.has("BaseFont")) {
+        const BaseFont = fontObj.get("BaseFont");
+        if (BaseFont instanceof Name) {
+          baseFont = BaseFont.name;
+        } else if (typeof BaseFont === "string") {
+          baseFont = BaseFont;
+        }
+      }
+
+      if (fontObj.has("Encoding")) {
+        const Encoding = fontObj.get("Encoding");
+        if (Encoding instanceof Name) {
+          encoding = Encoding.name;
+        } else if (typeof Encoding === "string") {
+          encoding = Encoding;
+        }
+      }
+
+      if (descriptor instanceof Dict) {
+        const fontFile =
+          descriptor.get("FontFile") ||
+          descriptor.get("FontFile2") ||
+          descriptor.get("FontFile3");
+        isEmbedded = !!fontFile;
+      }
+
+      isSubset = baseFont ? /^[A-Z0-9]{1,6}\+/.test(baseFont) : false;
+
       return {
-        descriptor,
-        isComposite,
         cidFontType,
         normalizedSubtype,
+        baseFont,
+        encoding,
+        isComposite,
+        isSubset,
+        isEmbedded,
       };
     } catch (e) {
       console.error(`Error resolving font info for ${fontName}: ${e.message}`);
 
       return {
-        descriptor: fontObj.get("FontDescriptor"),
-        isComposite: false,
         cidFontType: null,
         normalizedSubtype: null,
+        baseFont: null,
+        encoding: null,
+        isComposite: false,
+        isSubset: false,
+        isEmbedded: false,
       };
     }
   }
@@ -2120,52 +2155,29 @@ class ExtendedCatalog extends Catalog {
             }
 
             // Resolve composite fonts and get the actual font info
-            const { descriptor, isComposite, cidFontType, normalizedSubtype } =
-              this.resolveFontInfo(fontObj, fontName);
+            const {
+              cidFontType,
+              normalizedSubtype,
+              baseFont,
+              encoding,
+              isComposite,
+              isSubset,
+              isEmbedded,
+            } = this.resolveFontInfo(fontObj, fontName);
 
             const fontInfo = {
               name: fontName,
-              pageIndex,
               ref: fontRef instanceof Ref ? fontRef : null,
               type: isComposite ? "Type0" : normalizedSubtype,
               subtype: normalizedSubtype,
+              pageIndex,
               cidFontType,
-              baseFont: null,
-              encoding: null,
-              isSubset: false,
-              isEmbedded: false,
+              baseFont,
+              encoding,
+              isSubset,
+              isEmbedded,
               isComposite,
             };
-
-            if (fontObj.has("BaseFont")) {
-              const baseFont = fontObj.get("BaseFont");
-              if (baseFont instanceof Name) {
-                fontInfo.baseFont = baseFont.name;
-              } else if (typeof baseFont === "string") {
-                fontInfo.baseFont = baseFont;
-              }
-            }
-
-            if (fontObj.has("Encoding")) {
-              const encoding = fontObj.get("Encoding");
-              if (encoding instanceof Name) {
-                fontInfo.encoding = encoding.name;
-              } else if (typeof encoding === "string") {
-                fontInfo.encoding = encoding;
-              }
-            }
-
-            if (descriptor instanceof Dict) {
-              const fontFile =
-                descriptor.get("FontFile") ||
-                descriptor.get("FontFile2") ||
-                descriptor.get("FontFile3");
-              fontInfo.isEmbedded = !!fontFile;
-            }
-
-            fontInfo.isSubset = fontInfo.baseFont
-              ? /^[A-Z0-9]{1,6}\+/.test(fontInfo.baseFont)
-              : false;
 
             fontsList.push(fontInfo);
           } catch {
