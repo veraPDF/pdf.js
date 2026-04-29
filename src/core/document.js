@@ -2128,6 +2128,10 @@ class ExtendedPDFDocument extends PDFDocument {
     super(pdfManager, arg);
   }
 
+  get encryptionDictionary() {
+    return shadow(this, "encryptionDictionary", this.xref.getEncryptionDictionary());
+  }
+
   get structureTree() {
     return shadow(this, "structureTree", this.catalog.structureTree);
   }

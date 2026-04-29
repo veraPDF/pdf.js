@@ -177,9 +177,10 @@ class WorkerMessageHandler {
         finishWorkerTask(task);
       }
 
-      const [numPages, fingerprints, structureTree, fonts] = await Promise.all([
+      const [numPages, fingerprints, encryptionDictionary, structureTree, fonts] = await Promise.all([
         pdfManager.ensureDoc("numPages"),
         pdfManager.ensureDoc("fingerprints"),
+        pdfManager.ensureDoc("encryptionDictionary"),
         pdfManager.ensureDoc("structureTree"),
         pdfManager.ensureDoc("fonts"),
       ]);
@@ -189,7 +190,7 @@ class WorkerMessageHandler {
         ? await pdfManager.ensureDoc("htmlForXfa")
         : null;
 
-      return { numPages, fingerprints, htmlForXfa, structureTree, fonts };
+      return { numPages, fingerprints, htmlForXfa, encryptionDictionary, structureTree, fonts };
     }
 
     async function getPdfManager({

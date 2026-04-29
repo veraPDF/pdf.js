@@ -163,6 +163,10 @@ class XRef {
     throw new InvalidPDFException("Invalid Root reference.");
   }
 
+  getEncryptionDictionary() {
+    return this.encrypt?.getEncryptionDictionary();
+  }
+
   processXRefTable(parser) {
     if (!("tableState" in this)) {
       // Stores state of the table as we process it so we can resume
