@@ -692,17 +692,17 @@ class StructTreePage {
 
   parse(pageRef) {
     if (!this.root || !this.rootDict || !(pageRef instanceof Ref)) {
-      return;
+      return {};
     }
 
     const parentTree = this.rootDict.get("ParentTree");
     if (!parentTree) {
-      return;
+      return {};
     }
     const id = this.pageDict.get("StructParents");
     const ids = this.root.structParentIds?.get(pageRef);
     if (!Number.isInteger(id) && !ids) {
-      return;
+      return {};
     }
 
     const map = new Map();
@@ -720,10 +720,12 @@ class StructTreePage {
     }
 
     if (!ids) {
-      return;
+      return {};
     }
+    const structParentToObjIdMap = {};
     for (const [elemId, type] of ids) {
       const obj = numberTree.get(elemId);
+      structParentToObjIdMap[elemId] = +(obj.objId.match(/^\d+/) ?? [-1])[0];
       if (obj) {
         const elem = this.addNode(this.xref.fetchIfRef(obj), map);
         if (
@@ -737,6 +739,7 @@ class StructTreePage {
         }
       }
     }
+    return structParentToObjIdMap;
   }
 
   addNode(dict, map, level = 0) {

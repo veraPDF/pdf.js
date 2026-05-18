@@ -528,12 +528,12 @@ class WorkerMessageHandler {
       return pdfManager.requestLoadedStream().then(stream => stream.bytes);
     });
 
-    handler.on("GetAnnotations", function ({ pageIndex, intent }) {
+    handler.on("GetAnnotations", function ({ pageIndex, intent, noSorting }) {
       return pdfManager.getPage(pageIndex).then(function (page) {
         const task = new WorkerTask(`GetAnnotations: page ${pageIndex}`);
         startWorkerTask(task);
 
-        return page.getAnnotationsData(handler, task, intent).then(
+        return page.getAnnotationsData(handler, task, intent, noSorting).then(
           data => {
             finishWorkerTask(task);
             return data;

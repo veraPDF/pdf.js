@@ -732,12 +732,13 @@ class Page {
     await this._parsedAnnotations;
 
     try {
-      const structTree = await this.pdfManager.ensure(
+      const [structTree, structParentToObjIdMap] = await this.pdfManager.ensure(
         this,
         "_parseStructTree",
         [structTreeRoot]
       );
       const data = await this.pdfManager.ensure(structTree, "serializable");
+      data.structParentToObjIdMap = structParentToObjIdMap;
       return data;
     } catch (ex) {
       warn(`getStructTree: "${ex}".`);
@@ -750,12 +751,12 @@ class Page {
    */
   _parseStructTree(structTreeRoot) {
     const tree = new StructTreePage(structTreeRoot, this.pageDict);
-    tree.parse(this.ref);
-    return tree;
+    const structParentToObjIdMap = tree.parse(this.ref);
+    return [tree, structParentToObjIdMap];
   }
 
-  async getAnnotationsData(handler, task, intent) {
-    const annotations = await this._parsedAnnotations;
+  async getAnnotationsData(handler, task, intent, noSorting = false) {
+    const annotations = await (noSorting ? this._parsedAnnotationsUnsorted : this._parsedAnnotations);
     if (annotations.length === 0) {
       return annotations;
     }
@@ -895,6 +896,48 @@ class Page {
     this.#areAnnotationsCached = true;
 
     return shadow(this, "_parsedAnnotations", promise);
+  }
+
+  get _parsedAnnotationsUnsorted() {
+    const promise = this.pdfManager
+      .ensure(this, "annotations")
+      .then(async annots => {
+        if (annots.length === 0) {
+          return annots;
+        }
+
+        const [annotationGlobals, fieldObjects] = await Promise.all([
+          this.pdfManager.ensureDoc("annotationGlobals"),
+          this.pdfManager.ensureDoc("fieldObjects"),
+        ]);
+        if (!annotationGlobals) {
+          return [];
+        }
+
+        const orphanFields = fieldObjects?.orphanFields;
+        const annotationPromises = [];
+        for (const annotationRef of annots) {
+          annotationPromises.push(
+            AnnotationFactory.create(
+              this.xref,
+              annotationRef,
+              annotationGlobals,
+              this._localIdFactory,
+              /* collectFields */ false,
+              orphanFields,
+              /* collectByType */ null,
+              this.ref
+            ).catch(function (reason) {
+              warn(`_parsedAnnotationsUnsorted: "${reason}".`);
+              return null;
+            })
+          );
+        }
+
+        return await Promise.all(annotationPromises);
+      });
+
+    return shadow(this, "_parsedAnnotationsUnsorted", promise);
   }
 
   get jsActions() {
