@@ -714,6 +714,23 @@ class Annotation {
       structParent: -1,
     };
 
+    if (dict.has("A")) {
+      const actionDict = dict.get("A");
+      if (actionDict instanceof Dict && actionDict.has("R")) {
+        const renditionDict = actionDict.get("R");
+        if (renditionDict instanceof Dict && renditionDict.has("C")) {
+          const mediaClipDict = renditionDict.get("C");
+          if (mediaClipDict instanceof Dict) {
+            const CT = mediaClipDict.get("CT");
+            this.data.mediaClip = {
+              contentType: CT && this._parseStringHelper(CT),
+              alt: mediaClipDict.getArray("Alt")
+            };
+          }
+        }
+      }
+    }
+
     if (annotationGlobals.structTreeRoot) {
       let structParent = dict.get("StructParent");
       this.data.structParent = structParent =

@@ -1185,6 +1185,8 @@ class PDFDocumentProxy {
  * @property {string} [intent] - Determines the annotations that are fetched,
  *   can be 'display' (viewable annotations), 'print' (printable annotations),
  *   or 'any' (all annotations). The default value is 'display'.
+ * @property {boolean} noSorting - Returns annotations in the order they are
+ *   declared in the document.
  */
 
 /**
@@ -1385,10 +1387,10 @@ class PDFPageProxy {
    * @returns {Promise<Array<any>>} A promise that is resolved with an
    *   {Array} of the annotation objects.
    */
-  getAnnotations({ intent = "display" } = {}) {
+  getAnnotations({ intent = "display", noSorting = false } = {}) {
     const { renderingIntent } = this._transport.getRenderingIntent(intent);
 
-    return this._transport.getAnnotations(this._pageIndex, renderingIntent);
+    return this._transport.getAnnotations(this._pageIndex, renderingIntent, noSorting);
   }
 
   /**
@@ -2946,10 +2948,11 @@ class WorkerTransport {
     });
   }
 
-  getAnnotations(pageIndex, intent) {
+  getAnnotations(pageIndex, intent, noSorting) {
     return this.messageHandler.sendWithPromise("GetAnnotations", {
       pageIndex,
       intent,
+      noSorting,
     });
   }
 
