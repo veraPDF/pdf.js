@@ -2017,6 +2017,7 @@ class ExtendedCatalog extends Catalog {
     let cidFontType = null;
     let normalizedSubtype = null;
     let baseFont = null;
+    let cidBaseFont = null;
     let encoding = null;
     let isEmbedded = false;
     let isComposite = false;
@@ -2036,6 +2037,7 @@ class ExtendedCatalog extends Catalog {
           if (cidFont instanceof Dict) {
             actualFont = cidFont;
 
+            cidBaseFont = this.getFieldValueStr(cidFont, "BaseFont");
             const cidSubtype = this.getFieldValueStr(cidFont, "Subtype");
 
             if (cidSubtype) {
@@ -2073,7 +2075,9 @@ class ExtendedCatalog extends Catalog {
         encoding = this.getFieldValueStr(fontObj, "Encoding");
       }
 
-      if (descriptor instanceof Dict) {
+      if (normalizedSubtype === "Type3") {
+        isEmbedded = true;
+      } else if (descriptor instanceof Dict) {
         const fontFile =
           descriptor.get("FontFile") ||
           descriptor.get("FontFile2") ||
@@ -2087,6 +2091,7 @@ class ExtendedCatalog extends Catalog {
         cidFontType,
         normalizedSubtype,
         baseFont,
+        cidBaseFont,
         encoding,
         isComposite,
         isSubset,
@@ -2099,6 +2104,7 @@ class ExtendedCatalog extends Catalog {
         cidFontType: null,
         normalizedSubtype: null,
         baseFont: null,
+        cidBaseFont: null,
         encoding: null,
         isComposite: false,
         isSubset: false,
@@ -2108,8 +2114,7 @@ class ExtendedCatalog extends Catalog {
   }
 
   collectFonts() {
-    const fontsList = [];
-    const seenRefs = new Set();
+    const seenFonts = new Map();
 
     try {
       for (let pageIndex = 0; pageIndex < this.pages.length; pageIndex++) {
@@ -2141,14 +2146,6 @@ class ExtendedCatalog extends Catalog {
         for (const [fontName, fontVal] of fontDict) {
           try {
             const fontRef = fontDict.getRaw(fontName);
-            const refKey =
-              fontRef instanceof Ref ? fontRef.toString() : fontName;
-
-            if (seenRefs.has(refKey)) {
-              continue;
-            }
-            seenRefs.add(refKey);
-
             const fontObj = this.xref.fetchIfRef(fontVal);
             if (!(fontObj instanceof Dict)) {
               continue;
@@ -2163,23 +2160,54 @@ class ExtendedCatalog extends Catalog {
               isComposite,
               isSubset,
               isEmbedded,
+              cidBaseFont,
             } = this.resolveFontInfo(fontObj, fontName);
 
+            const fontIdentity = [
+              baseFont,
+              cidBaseFont,
+              cidFontType,
+              encoding,
+            ].join(":");
+
+            if (seenFonts.has(fontIdentity)) {
+              const existing = seenFonts.get(fontIdentity);
+              if (
+                !existing.refs.some(
+                  r =>
+                    r &&
+                    fontRef &&
+                    r.num === fontRef.num &&
+                    r.gen === fontRef.gen
+                )
+              ) {
+                existing.refs.push(fontRef instanceof Ref ? fontRef : null);
+              }
+              if (!existing.pageIndices.includes(pageIndex)) {
+                existing.pageIndices.push(pageIndex);
+              }
+              if (!existing.names.includes(fontName)) {
+                existing.names.push(fontName);
+              }
+              continue;
+            }
+
             const fontInfo = {
-              name: fontName,
-              ref: fontRef instanceof Ref ? fontRef : null,
+              names: [fontName],
+              refs: [fontRef instanceof Ref ? fontRef : null],
               type: isComposite ? "Type0" : normalizedSubtype,
               subtype: normalizedSubtype,
-              pageIndex,
+              pageIndices: [pageIndex],
               cidFontType,
               baseFont,
+              cidBaseFont,
               encoding,
               isSubset,
               isEmbedded,
               isComposite,
             };
 
-            fontsList.push(fontInfo);
+            seenFonts.set(fontIdentity, fontInfo);
           } catch {
             continue;
           }
@@ -2189,7 +2217,7 @@ class ExtendedCatalog extends Catalog {
       console.error(`Failed to collect fonts: ${e.message}`);
     }
 
-    return fontsList;
+    return Array.from(seenFonts.values());
   }
 
   get fonts() {
