@@ -520,7 +520,8 @@ class BoundingBoxesCalculator {
       fn !== OPS.markPoint &&
       fn !== OPS.markPointProps &&
       fn !== OPS.beginMarkedContent &&
-      fn !== OPS.beginMarkedContentProps
+      fn !== OPS.beginMarkedContentProps &&
+      fn !== OPS.endMarkedContent
     ) {
       this.boundingBoxesStack.inc();
     }
