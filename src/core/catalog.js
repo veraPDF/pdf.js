@@ -1802,9 +1802,9 @@ class ExtendedCatalog extends Catalog {
     try {
       return stringToUTF8String(str);
     } catch (e) {
-      console.log(
+      /*console.log(
         `Failed to convert string "${str}" (${type}) to UTF-8, using safe conversion. Error: ${e}`
-      );
+      );*/
       return stringToPDFString(str);
     }
   }
