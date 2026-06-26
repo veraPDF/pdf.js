@@ -117,12 +117,22 @@ class FileSpec {
     return shadow(this, "description", description);
   }
 
+  get afRelationship() {
+    let afRelationship = "";
+
+    const rel = this.root?.get("AFRelationship");
+    if (typeof rel === "string") afRelationship = rel;
+    else if (rel instanceof Name) afRelationship = rel.name;
+    return shadow(this, "afRelationship", afRelationship);
+  }
+
   get serializable() {
     return {
       rawFilename: this.filename,
       filename: stripPath(this.filename),
       content: this.content,
       description: this.description,
+      afRelationship: this.afRelationship,
     };
   }
 }

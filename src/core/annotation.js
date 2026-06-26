@@ -714,6 +714,11 @@ class Annotation {
       structParent: -1,
     };
 
+    const name = dict.get("Name");
+    if (name instanceof Name) {
+      this.data.name = stringToPDFString(name.name);
+    }
+
     if (dict.has("A")) {
       const actionDict = dict.get("A");
       if (actionDict instanceof Dict && actionDict.has("R")) {

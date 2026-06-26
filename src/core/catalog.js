@@ -1547,7 +1547,8 @@ class Catalog {
 
     let action = destDict.get("A"),
       url,
-      dest;
+      dest,
+      sDest;
     if (!(action instanceof Dict)) {
       if (destDict.has("Dest")) {
         // A /Dest entry should *only* contain a Name or an Array, but some bad
@@ -1600,6 +1601,7 @@ class Catalog {
 
         case "GoTo":
           dest = action.get("D");
+          sDest = action.get("SD");
           break;
 
         case "Launch":
@@ -1750,19 +1752,16 @@ class Catalog {
       }
       resultObj.unsafeUrl = url;
     }
-    if (dest) {
-      if (dest instanceof Name) {
-        dest = dest.name;
-      }
-      if (typeof dest === "string") {
-        resultObj.dest = stringToPDFString(
-          dest,
-          /* keepEscapeSequence = */ true
-        );
-      } else if (isValidExplicitDest(dest)) {
-        resultObj.dest = dest;
-      }
+
+    const parseDest = (d, obj, field = "dest") => {
+      if (d instanceof Name) d = d.name;
+
+      if (typeof d === "string") obj[field] = stringToPDFString(d, /* keepEscapeSequence = */ true);
+      else if (isValidExplicitDest(d)) obj[field] = d;
     }
+
+    if (dest) parseDest(dest, resultObj);
+    if (sDest) parseDest(sDest, resultObj, "sDest");
   }
 }
 
