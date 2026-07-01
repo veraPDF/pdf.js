@@ -52,11 +52,8 @@ class BoundingBoxesCalculator {
   }
 
   getTextBoundingBox(glyphs) {
-    let tx = 0;
-    let ty = 0;
     // Save previous x value to take it into account while calculating
     // width of marked content
-
     const ctm = this.graphicsStateManager.state.ctm;
 
     const descent =
@@ -116,35 +113,44 @@ class BoundingBoxesCalculator {
         : 1;
 
     let glyphsSize = [];
+    let tx = 0, ty = 0;
     for (let i = 0; i < glyphs.length; i++) {
+      this.textStateManager.state.translateTextMatrix(tx, -ty);
+      tx = ty = 0;
       const glyph = glyphs[i];
       if (typeof glyph === "number") {
-        if (this.textStateManager.state.font.vertical) {
-          ty =
-            (-glyph / 1000) *
-            this.textStateManager.state.fontSize *
-            this.textStateManager.state.textHScale;
-        } else {
+        if (!this.textStateManager.state.font.vertical) {
           tx =
             (-glyph / 1000) *
             this.textStateManager.state.fontSize *
             this.textStateManager.state.textHScale;
+        } else {
+          ty =
+            (glyph / 1000) *
+            this.textStateManager.state.fontSize;
         }
       } else {
-        let glyphWidth = null;
-        glyphWidth =
-          this.textStateManager.state.font.vertical && glyph.vmetric
-            ? glyph.vmetric[0]
+        const vmetric = glyph.vmetric ??
+          this.textStateManager.state.font.defaultVMetrics;
+        const glyphWidth =
+          this.textStateManager.state.font.vertical && vmetric
+            ? -vmetric[0]
             : glyph.width;
+        const [x, y] = [
+          this.textStateManager.state.textMatrix[4] + shift[0],
+          this.textStateManager.state.textMatrix[5] + shift[1],
+        ];
         if (!this.textStateManager.state.font.vertical) {
           const w0 =
             glyphWidth *
             (this.textStateManager.state.fontMatrix
               ? this.textStateManager.state.fontMatrix[0]
               : 1 / 1000);
+          tx = w0 * this.textStateManager.state.fontSize *
+            this.textStateManager.state.textHScale;
+          this.textStateManager.state.translateTextMatrix(tx, 0);
           tx =
-            (w0 * this.textStateManager.state.fontSize +
-              this.textStateManager.state.charSpacing +
+            (this.textStateManager.state.charSpacing +
               (glyph.isSpace ? this.textStateManager.state.wordSpacing : 0)) *
             this.textStateManager.state.textHScale;
         } else {
@@ -153,18 +159,12 @@ class BoundingBoxesCalculator {
             (this.textStateManager.state.fontMatrix
               ? this.textStateManager.state.fontMatrix[0]
               : 1 / 1000);
+          ty = w1 * this.textStateManager.state.fontSize;
+          this.textStateManager.state.translateTextMatrix(0, -ty);
           ty =
-            w1 * this.textStateManager.state.fontSize -
-            this.textStateManager.state.charSpacing -
-            (glyph.isSpace ? this.textStateManager.state.wordSpacing : 0);
+            -this.textStateManager.state.charSpacing -
+              (glyph.isSpace ? this.textStateManager.state.wordSpacing : 0);
         }
-      }
-      const [x, y] = [
-        this.textStateManager.state.textMatrix[4] + shift[0],
-        this.textStateManager.state.textMatrix[5] + shift[1],
-      ];
-      this.textStateManager.state.translateTextMatrix(tx, -ty);
-      if (typeof glyph !== "number") {
         glyphsSize.push([
           x,
           y,
