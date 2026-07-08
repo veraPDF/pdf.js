@@ -15,7 +15,7 @@
 
 import { shadow, stringToPDFString, warn } from "../shared/util.js";
 import { BaseStream } from "./base_stream.js";
-import { Dict } from "./primitives.js";
+import { Dict, Name } from "./primitives.js";
 
 function pickPlatformItem(dict) {
   if (!(dict instanceof Dict)) {
