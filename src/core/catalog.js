@@ -2201,23 +2201,17 @@ class ExtendedCatalog extends Catalog {
                     r.gen === fontRef.gen
                 )
               ) {
-                existing.refs.push(fontRef instanceof Ref ? fontRef : null);
+                existing.refs.push(fontRef);
               }
-              if (!existing.pageIndices.includes(pageIndex)) {
-                existing.pageIndices.push(pageIndex);
-              }
-              if (!existing.names.includes(fontName)) {
-                existing.names.push(fontName);
-              }
+              existing.names[pageIndex] = fontName;
               continue;
             }
 
             const fontInfo = {
-              names: [fontName],
+              names: { [pageIndex]: fontName },
               refs: [fontRef instanceof Ref ? fontRef : null],
               type: isComposite ? "Type0" : normalizedSubtype,
               subtype: normalizedSubtype,
-              pageIndices: [pageIndex],
               cidFontType,
               baseFont,
               cidBaseFont,
