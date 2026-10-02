@@ -1822,6 +1822,17 @@ class ExtendedCatalog extends Catalog {
         }
       }
 
+      const getStringProp = (dict, key) => {
+        if (!(dict instanceof Dict) || !dict.has(key)) {
+          return null;
+        }
+        const val = dict.get(key);
+        if (typeof val === "string") {
+          return stringToPDFString(val);
+        }
+        return null;
+      };
+
       if (el instanceof Dict && el.has("K")) {
         const name = el.has("S") ? el.get("S").name : null;
         const roleName = this.getRoleName(el, name);
@@ -1832,6 +1843,13 @@ class ExtendedCatalog extends Catalog {
           children: this.getTreeElement(el.get("K"), page, el.getRaw("K")),
           pageIndex: page,
           ref: ref instanceof Ref ? ref : null,
+          title: getStringProp(el, "T"),
+          lang: getStringProp(el, "Lang"),
+          alt: getStringProp(el, "Alt"),
+          actualText: getStringProp(el, "ActualText"),
+          expanded: getStringProp(el, "E"),
+          phoneticAlphabet: getStringProp(el, "PhoneticAlphabet"),
+          phoneme: getStringProp(el, "Phoneme"),
         };
 
         let alt = el.has("Alt") ? el.get("Alt") : null;
@@ -1918,6 +1936,13 @@ class ExtendedCatalog extends Catalog {
           children: [],
           pageIndex: page,
           ref: ref instanceof Ref ? ref : null,
+          title: getStringProp(el, "T"),
+          lang: getStringProp(el, "Lang"),
+          alt: getStringProp(el, "Alt"),
+          actualText: getStringProp(el, "ActualText"),
+          expanded: getStringProp(el, "E"),
+          phoneticAlphabet: getStringProp(el, "PhoneticAlphabet"),
+          phoneme: getStringProp(el, "Phoneme"),
         };
 
         let alt = el.has("Alt") ? el.get("Alt") : null;
