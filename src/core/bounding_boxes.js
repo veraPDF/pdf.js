@@ -15,6 +15,7 @@ class BoundingBoxesCalculator {
     this.boundingBoxes = {};
     this.refBoundingBoxes = {};
     this.ignoreCalculations = ignoreCalculations;
+    this.operandNameArray = [];
     this.operationArray = [];
     this.mcidArray = [];
     this.sameMcidDepth = 0;
@@ -652,7 +653,8 @@ class BoundingBoxesCalculator {
         }
         break;
       case OPS.paintXObject:
-        const [type, bboxes] = args;
+        const [name, type, bboxes] = args;
+        this.operandNameArray[this.operationIndex] = name;
         if (type === "Image") {
           this.getImageBoundingBox();
           this.saveGraphicsBoundingBox();
