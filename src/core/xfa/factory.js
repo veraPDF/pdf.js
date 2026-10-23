@@ -158,7 +158,7 @@ class XFAFactory {
       }
 
       const { html } = result;
-      const { attributes } = html;
+      const { attributes } = html ?? {};
       if (attributes) {
         if (attributes.class) {
           attributes.class = attributes.class.filter(
