@@ -343,6 +343,7 @@ const OPS = {
   boundingBoxes: 100,
   operationPosition: 101,
   annotBBoxesAndOpPos: 102,
+  operandName: 103,
 };
 
 // In order to have a switch statement that is fast (i.e. which use a jump
