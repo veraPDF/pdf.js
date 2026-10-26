@@ -522,7 +522,8 @@ class Page {
     let MCIDBoundingBoxes,
       positionByOperationIndex,
       noMCIDBoundingBoxes,
-      refMCIDBoundingBoxes;
+      refMCIDBoundingBoxes,
+      operandNameByIndex;
     const pageListPromise = Promise.all([
       contentStreamPromise,
       resourcesPromise,
@@ -555,11 +556,13 @@ class Page {
           operationArray,
           boundingBoxesWithoutMCID,
           refBoundingBoxesByMCID,
+          operandNameArray,
         ]) {
           MCIDBoundingBoxes = boundingBoxesByMCID;
           positionByOperationIndex = operationArray;
           noMCIDBoundingBoxes = boundingBoxesWithoutMCID;
           refMCIDBoundingBoxes = refBoundingBoxesByMCID;
+          operandNameByIndex = operandNameArray;
         });
 
       return opList;
@@ -600,6 +603,7 @@ class Page {
       intent & RenderingIntentFlag.ANNOTATIONS_DISABLE
     ) {
       if (intent & RenderingIntentFlag.OPLIST) {
+        pageOpList.addOp(OPS.operandName, operandNameByIndex);
         pageOpList.addOp(OPS.annotBBoxesAndOpPos, []);
         pageOpList.addOp(OPS.operationPosition, positionByOperationIndex);
         pageOpList.addOp(OPS.boundingBoxes, [
@@ -668,6 +672,7 @@ class Page {
       );
     }
     if (intent & RenderingIntentFlag.OPLIST) {
+      pageOpList.addOp(OPS.operandName, operandNameByIndex);
       pageOpList.addOp(
         OPS.annotBBoxesAndOpPos,
         annotationsBBoxesAndOperationPosition

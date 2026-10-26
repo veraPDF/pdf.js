@@ -1814,6 +1814,7 @@ class PartialEvaluator {
               const localImage = localImageCache.getByName(name);
               if (localImage) {
                 boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                  name,
                   "Image",
                 ]);
                 addCachedImageOps(operatorList, localImage);
@@ -1837,6 +1838,7 @@ class PartialEvaluator {
 
                   if (cachedImage) {
                     boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                      name,
                       "Image",
                     ]);
                     addCachedImageOps(operatorList, cachedImage);
@@ -1879,6 +1881,7 @@ class PartialEvaluator {
                         boundingBoxesByMCID
                       );
                       boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                        name,
                         type.name,
                         boundingBoxesWithoutMCID,
                       ]);
@@ -1889,6 +1892,7 @@ class PartialEvaluator {
                   return;
                 } else if (type.name === "Image") {
                   boundingBoxCalculator.parseOperator(OPS.paintXObject, [
+                    name,
                     type.name,
                   ]);
                   self
@@ -2439,6 +2443,7 @@ class PartialEvaluator {
         boundingBoxCalculator.operationArray,
         boundingBoxCalculator.getNoMCIDBoundingBoxes(),
         boundingBoxCalculator.refBoundingBoxes,
+        boundingBoxCalculator.operandNameArray,
       ]);
     }).catch(reason => {
       if (reason instanceof AbortException) {
