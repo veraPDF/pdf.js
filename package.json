@@ -62,7 +62,6 @@
     "vinyl": "^3.0.1",
     "webpack": "^5.109.2",
     "webpack-stream": "^7.0.0",
-    "yargs": "^18.0.0",
     "node-notifier": "^10.0.1"
   },
   "repository": {
