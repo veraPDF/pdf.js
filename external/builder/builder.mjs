@@ -39,15 +39,22 @@ function preprocess(inFilename, outFilename, defines) {
   }
 
   function expandCssImports(content, baseUrl) {
+    if (defines.GECKOVIEW) {
+      // In Geckoview, we don't need some styles.
+      const startComment = "/* Ignored in GECKOVIEW: begin */";
+      const endComment = "/* Ignored in GECKOVIEW: end */";
+      const beginIndex = content.indexOf(startComment);
+      const endIndex = content.indexOf(endComment);
+      if (beginIndex >= 0 && endIndex > beginIndex) {
+        content =
+          content.substring(0, beginIndex) +
+          content.substring(endIndex + endComment.length);
+      }
+    }
+
     return content.replaceAll(
-      /^\s*@import\s+url\(([^)]+)\);\s*$/gm,
+      /^[ \t]*@import\s+url\(([^)]+)\);[ \t]*$/gm,
       function (all, url) {
-        if (defines.GECKOVIEW) {
-          switch (url) {
-            case "annotation_editor_layer_builder.css":
-              return "";
-          }
-        }
         const file = path.join(path.dirname(baseUrl), url);
         const imported = fs.readFileSync(file, "utf8").toString();
         return expandCssImports(imported, file);
@@ -66,10 +73,7 @@ function preprocess(inFilename, outFilename, defines) {
   const out = [];
   let i = 0;
   function readLine() {
-    if (i < totalLines) {
-      return lines[i++];
-    }
-    return null;
+    return i < totalLines ? lines[i++] : null;
   }
   const writeLine =
     typeof outFilename === "function"
@@ -106,16 +110,9 @@ function preprocess(inFilename, outFilename, defines) {
     const realPath = fs.realpathSync(inFilename);
     const dir = path.dirname(realPath);
     try {
-      let fullpath;
-      if (file.indexOf("$ROOT/") === 0) {
-        fullpath = path.join(
-          __dirname,
-          "../..",
-          file.substring("$ROOT/".length)
-        );
-      } else {
-        fullpath = path.join(dir, file);
-      }
+      const fullpath = file.startsWith("$ROOT/")
+        ? path.join(__dirname, "../..", file.substring("$ROOT/".length))
+        : path.join(dir, file);
       preprocess(fullpath, writeLine, defines);
     } catch (e) {
       if (e.code === "ENOENT") {
@@ -125,12 +122,9 @@ function preprocess(inFilename, outFilename, defines) {
     }
   }
   function expand(line) {
-    line = line.replaceAll(/__[\w]+__/g, function (variable) {
+    line = line.replaceAll(/__\w+__/g, function (variable) {
       variable = variable.substring(2, variable.length - 2);
-      if (variable in defines) {
-        return defines[variable];
-      }
-      return "";
+      return variable in defines ? defines[variable] : "";
     });
     writeLine(line);
   }
@@ -151,7 +145,8 @@ function preprocess(inFilename, outFilename, defines) {
   let state = STATE_NONE;
   const stack = [];
   const control =
-    /^(?:\/\/|\s*\/\*|<!--)\s*#(if|elif|else|endif|expand|include|error)\b(?:\s+(.*?)(?:\*\/|-->)?$)?/;
+    // eslint-disable-next-line regexp/no-super-linear-backtracking
+    /^(?:\/\/|\s*\/\*|\s*<!--)\s*#(if|elif|else|endif|expand|include|error)\b(?:\s+(.*?)(?:\*\/|-->)?$)?/;
 
   while ((line = readLine()) !== null) {
     ++lineNumber;
@@ -213,7 +208,7 @@ function preprocess(inFilename, outFilename, defines) {
     ) {
       writeLine(
         line
-          .replaceAll(/^\/\/|^<!--/g, "  ")
+          .replaceAll(/^\/\/|^\s*<!--/g, "  ")
           .replaceAll(/(^\s*)\/\*/g, "$1  ")
           .replaceAll(/\*\/$|-->$/g, "")
       );

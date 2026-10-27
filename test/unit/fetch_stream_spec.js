@@ -20,7 +20,7 @@ import { TestPdfsServer } from "./test_utils.js";
 
 describe("fetch_stream", function () {
   function getPdfUrl() {
-    return TestPdfsServer.resolveURL("tracemonkey.pdf").href;
+    return TestPdfsServer.resolveURL("tracemonkey.pdf");
   }
   const pdfLength = 1016315;
 
@@ -35,6 +35,7 @@ describe("fetch_stream", function () {
   it("read with streaming", async function () {
     const stream = new PDFFetchStream({
       url: getPdfUrl(),
+      rangeChunkSize: 32768,
       disableStream: false,
       disableRange: true,
     });
@@ -62,8 +63,8 @@ describe("fetch_stream", function () {
     await read();
 
     expect(len).toEqual(pdfLength);
-    expect(isStreamingSupported).toEqual(true);
-    expect(isRangeSupported).toEqual(false);
+    expect(isStreamingSupported).toBeTrue();
+    expect(isRangeSupported).toBeFalse();
   });
 
   it("read ranges with streaming", async function () {
@@ -111,9 +112,9 @@ describe("fetch_stream", function () {
       read(rangeReader2, result2),
     ]);
 
-    expect(isStreamingSupported).toEqual(true);
-    expect(isRangeSupported).toEqual(true);
-    expect(fullReaderCancelled).toEqual(true);
+    expect(isStreamingSupported).toBeTrue();
+    expect(isRangeSupported).toBeTrue();
+    expect(fullReaderCancelled).toBeTrue();
     expect(result1.value).toEqual(rangeSize);
     expect(result2.value).toEqual(tailSize);
   });

@@ -26,7 +26,7 @@ describe("event_utils", function () {
       const eventBus = new EventBus();
       let count = 0;
       eventBus.on("test", function (evt) {
-        expect(evt).toEqual(undefined);
+        expect(evt).toBeUndefined();
         count++;
       });
       eventBus.dispatch("test");
@@ -204,12 +204,12 @@ describe("event_utils", function () {
       const eventBus = new EventBus();
       let count = 0;
       eventBus.on("test", function (evt) {
-        expect(evt).toEqual(undefined);
+        expect(evt).toBeUndefined();
         count++;
       });
       function domEventListener() {
         // Shouldn't get here.
-        expect(false).toEqual(true);
+        expect(false).toBeTrue();
       }
       document.addEventListener("test", domEventListener);
 
@@ -240,10 +240,10 @@ describe("event_utils", function () {
       }).then(
         function () {
           // Shouldn't get here.
-          expect(false).toEqual(true);
+          expect(false).toBeTrue();
         },
         function (reason) {
-          expect(reason instanceof Error).toEqual(true);
+          expect(reason).toBeInstanceOf(Error);
         }
       );
 
@@ -253,10 +253,10 @@ describe("event_utils", function () {
       }).then(
         function () {
           // Shouldn't get here.
-          expect(false).toEqual(true);
+          expect(false).toBeTrue();
         },
         function (reason) {
-          expect(reason instanceof Error).toEqual(true);
+          expect(reason).toBeInstanceOf(Error);
         }
       );
 
@@ -267,10 +267,10 @@ describe("event_utils", function () {
       }).then(
         function () {
           // Shouldn't get here.
-          expect(false).toEqual(true);
+          expect(false).toBeTrue();
         },
         function (reason) {
-          expect(reason instanceof Error).toEqual(true);
+          expect(reason).toBeInstanceOf(Error);
         }
       );
 

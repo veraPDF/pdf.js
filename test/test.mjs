@@ -1,5 +1,4 @@
-/*
- * Copyright 2014 Mozilla Foundation
+/* Copyright 2014 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,179 +14,156 @@
  */
 /* eslint-disable no-var */
 
+import {
+  colorBrowser,
+  TEST_PASSED,
+  TEST_UNEXPECTED_FAIL,
+} from "./color_utils.mjs";
 import { copySubtreeSync, ensureDirSync } from "./testutils.mjs";
+import {
+  COVERAGE_FORMAT_TO_REPORTER,
+  parseCoverageFormats,
+} from "../external/ccov/coverage_format.mjs";
 import {
   downloadManifestFiles,
   verifyManifestFiles,
 } from "./downloadutils.mjs";
+import { execSync } from "child_process";
 import fs from "fs";
+import istanbulCoverage from "istanbul-lib-coverage";
+import istanbulReportGenerator from "istanbul-reports";
+import libReport from "istanbul-lib-report";
 import os from "os";
+import { parseArgs } from "node:util";
 import path from "path";
 import puppeteer from "puppeteer";
 import readline from "readline";
 import { translateFont } from "./font/ttxdriver.mjs";
 import { WebServer } from "./webserver.mjs";
-import yargs from "yargs";
+
+const __dirname = import.meta.dirname;
+
+// Strip private ancillary PNG chunks before comparing snapshots. Firefox adds
+// a `deBG` chunk with a per-session unique ID to canvas.toDataURL("image/png")
+// output, causing false failures when ref and test were captured in different
+// browser sessions.
+// For reference:
+//  https://searchfox.org/firefox-main/rev/1427c88632d1474d2653928745d78feca1a64ee0/image/encoders/png/nsPNGEncoder.cpp#367
+function stripPrivatePngChunks(buf) {
+  const PNG_SIGNATURE = 8;
+  let pos = PNG_SIGNATURE;
+  const chunks = [];
+  const pre_chunk_data = 8; // len (4) + type (4)
+  const post_chunk_data = 4; // CRC
+  while (pos < buf.length) {
+    const len = buf.readUInt32BE(pos);
+    const type = buf.slice(pos + 4, pos + 8).toString("latin1");
+    const to_skip = pre_chunk_data + len + post_chunk_data;
+    // Keep critical chunks (uppercase first letter) and public ancillary
+    // chunks (uppercase second letter). Drop private ancillary chunks
+    // (lowercase second letter), e.g. "deBG" added by Firefox.
+    // See PNG specification for details on chunk types:
+    //  https://www.libpng.org/pub/png/spec/1.2/PNG-Chunks.html#:~:text=4%2E3%2E,-Summary
+    if (
+      type[0] === type[0].toUpperCase() ||
+      type[1] === type[1].toUpperCase()
+    ) {
+      chunks.push(buf.slice(pos, pos + to_skip));
+    }
+    pos += to_skip;
+  }
+  return Buffer.concat([buf.slice(0, PNG_SIGNATURE), ...chunks]);
+}
 
 function parseOptions() {
-  const parsedArgs = yargs(process.argv)
-    .usage("Usage: $0")
-    .option("downloadOnly", {
-      default: false,
-      describe: "Download test PDFs without running the tests.",
-      type: "boolean",
-    })
-    .option("fontTest", {
-      default: false,
-      describe: "Run the font tests.",
-      type: "boolean",
-    })
-    .option("help", {
-      alias: "h",
-      default: false,
-      describe: "Show this help message.",
-      type: "boolean",
-    })
-    .option("integration", {
-      default: false,
-      describe: "Run the integration tests.",
-      type: "boolean",
-    })
-    .option("manifestFile", {
-      default: "test_manifest.json",
-      describe: "A path to JSON file in the form of `test_manifest.json`.",
-      type: "string",
-    })
-    .option("masterMode", {
-      alias: "m",
-      default: false,
-      describe: "Run the script in master mode.",
-      type: "boolean",
-    })
-    .option("noChrome", {
-      default: false,
-      describe: "Skip Chrome when running tests.",
-      type: "boolean",
-    })
-    .option("noFirefox", {
-      default: false,
-      describe: "Skip Firefox when running tests.",
-      type: "boolean",
-    })
-    .option("noDownload", {
-      default: false,
-      describe: "Skip downloading of test PDFs.",
-      type: "boolean",
-    })
-    .option("noPrompts", {
-      default: false,
-      describe: "Uses default answers (intended for CLOUD TESTS only!).",
-      type: "boolean",
-    })
-    .option("headless", {
-      default: false,
-      describe:
-        "Run the tests in headless mode, i.e. without visible browser windows.",
-      type: "boolean",
-    })
-    .option("port", {
-      default: 0,
-      describe: "The port the HTTP server should listen on.",
-      type: "number",
-    })
-    .option("reftest", {
-      default: false,
-      describe:
-        "Automatically start reftest showing comparison test failures, if there are any.",
-      type: "boolean",
-    })
-    .option("statsDelay", {
-      default: 0,
-      describe:
-        "The amount of time in milliseconds the browser should wait before starting stats.",
-      type: "number",
-    })
-    .option("statsFile", {
-      default: "",
-      describe: "The file where to store stats.",
-      type: "string",
-    })
-    .option("strictVerify", {
-      default: false,
-      describe: "Error if verifying the manifest files fails.",
-      type: "boolean",
-    })
-    .option("testfilter", {
-      alias: "t",
-      default: [],
-      describe: "Run specific reftest(s).",
-      type: "array",
-    })
-    .example(
-      "testfilter",
-      "$0 -t=issue5567 -t=issue5909\n" +
-        "Run the reftest identified by issue5567 and issue5909."
-    )
-    .option("unitTest", {
-      default: false,
-      describe: "Run the unit tests.",
-      type: "boolean",
-    })
-    .option("xfaOnly", {
-      default: false,
-      describe: "Only run the XFA reftest(s).",
-      type: "boolean",
-    })
-    .check(argv => {
-      if (
-        +argv.reftest + argv.unitTest + argv.fontTest + argv.masterMode <=
-        1
-      ) {
-        return true;
-      }
-      throw new Error(
-        "--reftest, --unitTest, --fontTest, and --masterMode must not be specified together."
-      );
-    })
-    .check(argv => {
-      if (
-        +argv.unitTest + argv.fontTest + argv.integration + argv.xfaOnly <=
-        1
-      ) {
-        return true;
-      }
-      throw new Error(
-        "--unitTest, --fontTest, --integration, and --xfaOnly must not be specified together."
-      );
-    })
-    .check(argv => {
-      if (argv.testfilter?.length > 0 && argv.xfaOnly) {
-        throw new Error("--testfilter and --xfaOnly cannot be used together.");
-      }
-      return true;
-    })
-    .check(argv => {
-      if (!argv.noDownload || !argv.downloadOnly) {
-        return true;
-      }
-      throw new Error(
-        "--noDownload and --downloadOnly cannot be used together."
-      );
-    })
-    .check(argv => {
-      if (!argv.masterMode || argv.manifestFile === "test_manifest.json") {
-        return true;
-      }
-      throw new Error(
-        "when --masterMode is specified --manifestFile shall be equal to `test_manifest.json`."
-      );
-    });
+  // Expand `-X=value` short-option forms into `["-X", "value"]` since
+  // parseArgs only strips the `=` separator for long options (--foo=bar).
+  const args = process.argv.slice(2).flatMap(arg => {
+    const m = arg.match(/^(-[a-z])=(.*)/is);
+    return m ? [m[1], m[2]] : [arg];
+  });
+  const { values } = parseArgs({
+    args,
+    options: {
+      coverage: { type: "boolean", default: false },
+      coverageFormats: { type: "string", default: "info" },
+      coverageOutput: { type: "string", default: "build/coverage" },
+      coveragePerTest: { type: "boolean", default: false },
+      downloadOnly: { type: "boolean", default: false },
+      fontTest: { type: "boolean", default: false },
+      headless: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+      integration: { type: "boolean", default: false },
+      jobs: { type: "string", short: "j", default: "1" },
+      manifestFile: { type: "string", default: "test_manifest.json" },
+      masterMode: { type: "boolean", short: "m", default: false },
+      noChrome: { type: "boolean", default: false },
+      noDownload: { type: "boolean", default: false },
+      noFirefox: { type: "boolean", default: false },
+      noPrompts: { type: "boolean", default: false },
+      port: { type: "string", default: "0" },
+      reftest: { type: "boolean", default: false },
+      statsDelay: { type: "string", default: "0" },
+      statsFile: { type: "string", default: "" },
+      strictVerify: { type: "boolean", default: false },
+      testfilter: { type: "string", short: "t", multiple: true, default: [] },
+      unitTest: { type: "boolean", default: false },
+    },
+  });
 
-  const result = parsedArgs.argv;
-  result.testfilter = Array.isArray(result.testfilter)
-    ? result.testfilter
-    : [result.testfilter];
-  return result;
+  if (values.help) {
+    console.log(
+      "Usage: test.mjs\n\n" +
+        "  --coverage          Enable code coverage collection.\n" +
+        "  --coverageFormats   Comma-separated list of coverage output formats: info,html,json,text,cobertura,clover. [info]\n" +
+        "  --coverageOutput    Directory for code coverage data. [build/coverage]\n" +
+        "  --coveragePerTest   Generate individual coverage reports per test.\n" +
+        "  --downloadOnly      Download test PDFs without running the tests.\n" +
+        "  --fontTest          Run the font tests.\n" +
+        "  --headless          Run tests without visible browser windows.\n" +
+        "  --help, -h          Show this help message.\n" +
+        "  --integration       Run the integration tests.\n" +
+        "  --jobs, -j          Number of parallel tabs per browser. [1]\n" +
+        "  --manifestFile      Path to manifest JSON file. [test_manifest.json]\n" +
+        "  --masterMode, -m    Run the script in master mode.\n" +
+        "  --noChrome          Skip Chrome when running tests.\n" +
+        "  --noDownload        Skip downloading of test PDFs.\n" +
+        "  --noFirefox         Skip Firefox when running tests.\n" +
+        "  --noPrompts         Use default answers (for CLOUD TESTS only!).\n" +
+        "  --port              Port for the HTTP server. [0]\n" +
+        "  --reftest           Start reftest viewer on comparison failures.\n" +
+        "  --statsDelay        Milliseconds to wait before starting stats. [0]\n" +
+        "  --statsFile         File where to store stats.\n" +
+        "  --strictVerify      Error if manifest file verification fails.\n" +
+        "  --testfilter, -t    Run specific reftest(s), e.g. -t=issue5567.\n" +
+        "  --unitTest          Run the unit tests.\n"
+    );
+    process.exit(0);
+  }
+
+  if (
+    +values.reftest + values.unitTest + values.fontTest + values.masterMode >
+    1
+  ) {
+    throw new Error(
+      "--reftest, --unitTest, --fontTest, and --masterMode must not be specified together."
+    );
+  }
+  if (values.noDownload && values.downloadOnly) {
+    throw new Error("--noDownload and --downloadOnly cannot be used together.");
+  }
+  if (values.masterMode && values.manifestFile !== "test_manifest.json") {
+    throw new Error(
+      "when --masterMode is specified --manifestFile shall be equal to `test_manifest.json`."
+    );
+  }
+
+  return {
+    ...values,
+    jobs: parseInt(values.jobs, 10) || 1,
+    port: parseInt(values.port, 10) || 0,
+    statsDelay: parseInt(values.statsDelay, 10) || 0,
+  };
 }
 
 var refsTmpDir = "tmp";
@@ -234,6 +210,9 @@ function updateRefImages() {
         console.log("  OK, not updating.");
       }
       reader.close();
+      // readline resumes stdin, making it a ref'd event-loop handle; close it
+      // explicitly so the process can exit once there is nothing else to do.
+      process.stdin.destroy();
     }
   );
 }
@@ -331,22 +310,73 @@ async function startRefTest(masterMode, showRefImages) {
     startTime = Date.now();
     startServer();
     server.hooks.POST.push(refTestPostHandler);
+    taskQueue = new Map();
+    refPngCache = new Map();
+
+    server.hooks.WS.push(ws => {
+      let pendingOps = 0;
+      let pendingQuit = null;
+      ws.on("message", (data, isBinary) => {
+        if (isBinary) {
+          pendingOps++;
+          handleWsBinaryResult(data).finally(() => {
+            if (--pendingOps === 0 && pendingQuit) {
+              pendingQuit();
+              pendingQuit = null;
+            }
+          });
+        } else {
+          const msg = JSON.parse(data.toString());
+          if (msg.type === "requestTask") {
+            const session = getSession(msg.browser);
+            session.taskResults ??= {};
+            session.tasks ??= {};
+            session.remaining ??= 0;
+            const browserType = session.browserType ?? session.name;
+            if (!taskQueue.has(browserType)) {
+              taskQueue.set(browserType, [...manifest]);
+            }
+            const task = taskQueue.get(browserType).shift();
+            if (task) {
+              const rounds = task.rounds || 1;
+              const roundsResults = [];
+              roundsResults.length = rounds;
+              session.taskResults[task.id] = roundsResults;
+              session.tasks[task.id] = task;
+              session.remaining++;
+              ws.send(JSON.stringify({ type: "task", task }));
+              prefetchRefPngs(browserType, task);
+            } else {
+              ws.send(JSON.stringify({ type: "done" }));
+            }
+          } else if (msg.type === "coverage") {
+            if (global.coveragePerTest) {
+              const { id, counts } = msg;
+              accumulatePerTestCoverage(id, counts);
+            }
+          } else if (msg.type === "quit") {
+            const session = getSession(msg.browser);
+            monitorBrowserTimeout(session, null);
+            const doQuit = () => closeSession(session.name);
+            if (pendingOps === 0) {
+              doQuit();
+            } else {
+              pendingQuit = doQuit;
+            }
+          }
+        }
+      });
+    });
     onAllSessionsClosed = finalize;
 
     await startBrowsers({
       baseUrl: `http://${host}:${server.port}/test/test_slave.html`,
+      numSessions: options.jobs,
       initializeSession: session => {
         session.masterMode = masterMode;
-        session.taskResults = {};
-        session.tasks = {};
-        session.remaining = manifest.length;
-        manifest.forEach(function (item) {
-          var rounds = item.rounds || 1;
-          var roundsResults = [];
-          roundsResults.length = rounds;
-          session.taskResults[item.id] = roundsResults;
-          session.tasks[item.id] = item;
-        });
+        session.taskResults ??= {};
+        session.tasks ??= {};
+        session.remaining ??= 0;
         session.numRuns = 0;
         session.numErrors = 0;
         session.numFBFFailures = 0;
@@ -387,42 +417,57 @@ async function startRefTest(masterMode, showRefImages) {
   if (!manifest) {
     return;
   }
+
   if (!options.noDownload) {
     await ensurePDFsDownloaded();
   }
   checkRefsTmp();
 }
 
-function handleSessionTimeout(session) {
-  if (session.closed) {
+async function handleSessionTimeout(session) {
+  if (session.closed || session.recovering) {
     return;
   }
-  var browser = session.name;
+  const inflightIds = Object.keys(session.tasks);
+  const suffix = inflightIds.length > 0 ? ` (${inflightIds.join(", ")})` : "";
   console.log(
-    "TEST-UNEXPECTED-FAIL | test failed " +
-      browser +
-      " has not responded in " +
-      browserTimeout +
-      "s"
+    `${TEST_UNEXPECTED_FAIL} | test failed ${session.name} has not responded in ${browserTimeout}s${suffix}`
   );
   session.numErrors += session.remaining;
   session.remaining = 0;
-  closeSession(browser);
+  session.taskResults = {};
+  session.tasks = {};
+
+  monitorBrowserTimeout(session, null);
+  if (session.page) {
+    session.recovering = true;
+    try {
+      await session.page.reload({
+        timeout: browserTimeout * 1000,
+        waitUntil: "domcontentloaded",
+      });
+      session.recovering = false;
+      monitorBrowserTimeout(session, handleSessionTimeout);
+      return;
+    } catch (err) {
+      console.log(
+        `Failed to reload ${session.name} after timeout: ${err.message}`
+      );
+      session.recovering = false;
+    }
+  }
+  closeSession(session.name);
 }
 
 function getTestManifest() {
   var manifest = JSON.parse(fs.readFileSync(options.manifestFile));
 
-  const testFilter = options.testfilter.slice(0),
-    xfaOnly = options.xfaOnly;
-  if (testFilter.length || xfaOnly) {
+  const testFilter = options.testfilter.slice(0);
+  if (testFilter.length) {
     manifest = manifest.filter(function (item) {
       var i = testFilter.indexOf(item.id);
       if (i !== -1) {
         testFilter.splice(i, 1);
-        return true;
-      }
-      if (xfaOnly && item.enableXfa) {
         return true;
       }
       return false;
@@ -435,121 +480,167 @@ function getTestManifest() {
   return manifest;
 }
 
-function checkEq(task, results, browser, masterMode) {
-  var taskId = task.id;
-  var refSnapshotDir = path.join(refsDir, os.platform(), browser, taskId);
-  var testSnapshotDir = path.join(
+function prefetchRefPngs(browserType, task) {
+  if (
+    task.type !== "eq" &&
+    task.type !== "partial" &&
+    task.type !== "text" &&
+    task.type !== "highlight" &&
+    task.type !== "extract"
+  ) {
+    return;
+  }
+  const refSnapshotDir = path.join(
+    refsDir,
+    os.platform(),
+    browserType,
+    task.id
+  );
+  const firstPage = task.firstPage || 1;
+  const lastPage = task.lastPage;
+  // 0-indexed so pages[p-1] = promise for `${p}.png`, matching checkEq's loop.
+  const pages = [];
+  for (let p = firstPage; p <= lastPage; p++) {
+    pages[p - 1] = fs.promises
+      .readFile(path.join(refSnapshotDir, `${p}.png`))
+      .catch(err => (err.code === "ENOENT" ? null : Promise.reject(err)));
+  }
+  refPngCache.set(`${browserType}/${task.id}`, pages);
+}
+
+async function checkEq(task, results, session, masterMode) {
+  const taskId = task.id;
+  const browserType = session.browserType ?? session.name;
+  const refSnapshotDir = path.join(refsDir, os.platform(), browserType, taskId);
+  const testSnapshotDir = path.join(
     testResultDir,
     os.platform(),
-    browser,
+    browserType,
     taskId
   );
+  const tmpSnapshotDir = masterMode
+    ? path.join(refsTmpDir, os.platform(), browserType, taskId)
+    : null;
 
-  var pageResults = results[0];
-  var taskType = task.type;
-  var numEqNoSnapshot = 0;
-  var numEqFailures = 0;
-  for (var page = 0; page < pageResults.length; page++) {
-    if (!pageResults[page]) {
+  const pageResults = results[0];
+  const taskType = task.type;
+  let numEqNoSnapshot = 0;
+  let numEqFailures = 0;
+
+  const cacheKey = `${browserType}/${taskId}`;
+  const cachedPages = refPngCache.get(cacheKey);
+  refPngCache.delete(cacheKey);
+
+  // Consume pre-started ref PNG reads (started when the task was dispatched),
+  // falling back to a fresh read if the cache entry is missing.
+  const refSnapshots = await Promise.all(
+    pageResults.map((pageResult, page) => {
+      if (!pageResult || !(pageResult.snapshot instanceof Buffer)) {
+        return null;
+      }
+      return (
+        cachedPages?.[page] ??
+        fs.promises
+          .readFile(path.join(refSnapshotDir, `${page + 1}.png`))
+          .catch(err => {
+            if (err.code === "ENOENT") {
+              return null;
+            }
+            throw err;
+          })
+      );
+    })
+  );
+
+  // Compare all pages (in-memory) and collect all I/O writes to fire together.
+  const writePromises = [];
+  const logEntries = [];
+  let testDirCreated = false;
+  let tmpDirCreated = false;
+
+  for (let page = 0; page < pageResults.length; page++) {
+    const pageResult = pageResults[page];
+    if (!pageResult) {
       continue;
     }
-    const pageResult = pageResults[page];
-    let testSnapshot = pageResult.snapshot;
-    if (testSnapshot?.startsWith("data:image/png;base64,")) {
-      testSnapshot = Buffer.from(testSnapshot.substring(22), "base64");
-    } else {
+    const testSnapshot = pageResult.snapshot;
+    if (!(testSnapshot instanceof Buffer)) {
       console.error("Valid snapshot was not found.");
+      continue;
     }
-    let unoptimizedSnapshot = pageResult.baselineSnapshot;
-    if (unoptimizedSnapshot?.startsWith("data:image/png;base64,")) {
-      unoptimizedSnapshot = Buffer.from(
-        unoptimizedSnapshot.substring(22),
-        "base64"
-      );
-    }
+    const unoptimizedSnapshot = pageResult.baselineSnapshot ?? null;
+    const refSnapshot = refSnapshots[page];
 
-    var refSnapshot = null;
-    var eq = false;
-    var refPath = path.join(refSnapshotDir, page + 1 + ".png");
-    if (!fs.existsSync(refPath)) {
+    let eq = false;
+    if (!refSnapshot) {
       numEqNoSnapshot++;
       if (!masterMode) {
-        console.log("WARNING: no reference snapshot " + refPath);
+        console.log(
+          `WARNING: no reference snapshot ${path.join(refSnapshotDir, `${page + 1}.png`)}`
+        );
       }
     } else {
-      refSnapshot = fs.readFileSync(refPath);
-      eq = refSnapshot.toString("hex") === testSnapshot.toString("hex");
+      eq =
+        Buffer.compare(
+          stripPrivatePngChunks(refSnapshot),
+          stripPrivatePngChunks(testSnapshot)
+        ) === 0;
       if (!eq) {
         console.log(
-          "TEST-UNEXPECTED-FAIL | " +
-            taskType +
-            " " +
-            taskId +
-            " | in " +
-            browser +
-            " | rendering of page " +
-            (page + 1) +
-            " != reference rendering"
+          `${TEST_UNEXPECTED_FAIL} | ${taskType} ${taskId} | in ${colorBrowser(session.name)} | rendering of page ${page + 1} != reference rendering`
         );
 
-        ensureDirSync(testSnapshotDir);
-        fs.writeFileSync(
-          path.join(testSnapshotDir, page + 1 + ".png"),
-          testSnapshot
-        );
-        fs.writeFileSync(
-          path.join(testSnapshotDir, page + 1 + "_ref.png"),
-          refSnapshot
+        if (!testDirCreated) {
+          ensureDirSync(testSnapshotDir);
+          testDirCreated = true;
+        }
+        const testPng = path.join(testSnapshotDir, `${page + 1}.png`);
+        const refPng = path.join(testSnapshotDir, `${page + 1}_ref.png`);
+        writePromises.push(
+          fs.promises.writeFile(testPng, testSnapshot),
+          fs.promises.writeFile(refPng, refSnapshot)
         );
 
         // This no longer follows the format of Mozilla reftest output.
         const viewportString = `(${pageResult.viewportWidth}x${pageResult.viewportHeight}x${pageResult.outputScale})`;
-        fs.appendFileSync(
-          eqLog,
-          "REFTEST TEST-UNEXPECTED-FAIL | " +
-            browser +
-            "-" +
-            taskId +
-            "-page" +
-            (page + 1) +
-            " | image comparison (==)\n" +
-            `REFTEST   IMAGE 1 (TEST)${viewportString}: ` +
-            path.join(testSnapshotDir, page + 1 + ".png") +
-            "\n" +
-            `REFTEST   IMAGE 2 (REFERENCE)${viewportString}: ` +
-            path.join(testSnapshotDir, page + 1 + "_ref.png") +
-            "\n"
+        logEntries.push(
+          `REFTEST TEST-UNEXPECTED-FAIL | ${session.name}-${taskId}-page${page + 1} | image comparison (==)\n` +
+            `REFTEST   IMAGE 1 (TEST)${viewportString}: ${testPng}\n` +
+            `REFTEST   IMAGE 2 (REFERENCE)${viewportString}: ${refPng}\n`
         );
         numEqFailures++;
       }
     }
     if (masterMode && (!refSnapshot || !eq)) {
-      var tmpSnapshotDir = path.join(
-        refsTmpDir,
-        os.platform(),
-        browser,
-        taskId
-      );
-      ensureDirSync(tmpSnapshotDir);
-      fs.writeFileSync(
-        path.join(tmpSnapshotDir, page + 1 + ".png"),
-        unoptimizedSnapshot ?? testSnapshot
+      if (!tmpDirCreated) {
+        ensureDirSync(tmpSnapshotDir);
+        tmpDirCreated = true;
+      }
+      writePromises.push(
+        fs.promises.writeFile(
+          path.join(tmpSnapshotDir, `${page + 1}.png`),
+          unoptimizedSnapshot ?? testSnapshot
+        )
       );
     }
   }
 
-  var session = getSession(browser);
+  if (logEntries.length) {
+    writePromises.push(fs.promises.appendFile(eqLog, logEntries.join("")));
+  }
+  await Promise.all(writePromises);
+
   session.numEqNoSnapshot += numEqNoSnapshot;
   if (numEqFailures > 0) {
     session.numEqFailures += numEqFailures;
   } else {
     console.log(
-      "TEST-PASS | " + taskType + " test " + taskId + " | in " + browser
+      `${TEST_PASSED} | ${taskType} test ${taskId} | in ${colorBrowser(session.name)}`
     );
   }
 }
 
-function checkFBF(task, results, browser, masterMode) {
+function checkFBF(task, results, session, masterMode) {
   var numFBFFailures = 0;
   var round0 = results[0],
     round1 = results[1];
@@ -563,7 +654,7 @@ function checkFBF(task, results, browser, masterMode) {
     if (!r0Page) {
       continue;
     }
-    if (r0Page.snapshot !== r1Page.snapshot) {
+    if (Buffer.compare(r0Page.snapshot, r1Page.snapshot) !== 0) {
       // The FBF tests fail intermittently in Firefox and Google Chrome when run
       // on the bots, ignoring `makeref` failures for now; see
       //  - https://github.com/mozilla/pdf.js/pull/12368
@@ -573,34 +664,23 @@ function checkFBF(task, results, browser, masterMode) {
       //       https://github.com/mozilla/pdf.js/issues/12371
       if (masterMode) {
         console.log(
-          "TEST-SKIPPED | forward-back-forward test " +
-            task.id +
-            " | in " +
-            browser +
-            " | page" +
-            (page + 1)
+          `TEST-SKIPPED | forward-back-forward test ${task.id} | in ${colorBrowser(session.name)} | page${page + 1}`
         );
         continue;
       }
 
       console.log(
-        "TEST-UNEXPECTED-FAIL | forward-back-forward test " +
-          task.id +
-          " | in " +
-          browser +
-          " | first rendering of page " +
-          (page + 1) +
-          " != second"
+        `${TEST_UNEXPECTED_FAIL} | forward-back-forward test ${task.id} | in ${colorBrowser(session.name)} | first rendering of page ${page + 1} != second`
       );
       numFBFFailures++;
     }
   }
 
   if (numFBFFailures > 0) {
-    getSession(browser).numFBFFailures += numFBFFailures;
+    session.numFBFFailures += numFBFFailures;
   } else {
     console.log(
-      "TEST-PASS | forward-back-forward test " + task.id + " | in " + browser
+      `${TEST_PASSED} | forward-back-forward test ${task.id} | in ${colorBrowser(session.name)}`
     );
   }
 }
@@ -608,10 +688,12 @@ function checkFBF(task, results, browser, masterMode) {
 function checkLoad(task, results, browser) {
   // Load just checks for absence of failure, so if we got here the
   // test has passed
-  console.log("TEST-PASS | load test " + task.id + " | in " + browser);
+  console.log(
+    `${TEST_PASSED} | load test ${task.id} | in ${colorBrowser(browser)}`
+  );
 }
 
-function checkRefTestResults(browser, id, results) {
+async function checkRefTestResults(browser, id, results) {
   var failed = false;
   var session = getSession(browser);
   var task = session.tasks[id];
@@ -636,7 +718,7 @@ function checkRefTestResults(browser, id, results) {
             "TEST-SKIPPED | PDF was not downloaded " +
               id +
               " | in " +
-              browser +
+              colorBrowser(browser) +
               " | page" +
               (page + 1) +
               " round " +
@@ -649,58 +731,110 @@ function checkRefTestResults(browser, id, results) {
             session.numErrors++;
           }
           console.log(
-            "TEST-UNEXPECTED-FAIL | test failed " +
-              id +
-              " | in " +
-              browser +
-              " | page" +
-              (page + 1) +
-              " round " +
-              (round + 1) +
-              " | " +
-              pageResult.failure
+            `${TEST_UNEXPECTED_FAIL} | test failed ${id} | in ${colorBrowser(browser)} | page${page + 1} round ${round + 1} | ${pageResult.failure}`
           );
         }
       }
     });
   });
+  const browserType = session.browserType ?? session.name;
   if (failed) {
-    return;
+    refPngCache.delete(`${browserType}/${id}`);
+  } else {
+    switch (task.type) {
+      case "eq":
+      case "partial":
+      case "text":
+      case "highlight":
+      case "extract":
+        await checkEq(task, results, session, session.masterMode);
+        break;
+      case "fbf":
+        checkFBF(task, results, session, session.masterMode);
+        break;
+      case "load":
+        checkLoad(task, results, session.name);
+        break;
+      default:
+        throw new Error("Unknown test type");
+    }
   }
-  switch (task.type) {
-    case "eq":
-    case "partial":
-    case "text":
-    case "highlight":
-      checkEq(task, results, browser, session.masterMode);
-      break;
-    case "fbf":
-      checkFBF(task, results, browser, session.masterMode);
-      break;
-    case "load":
-      checkLoad(task, results, browser);
-      break;
-    default:
-      throw new Error("Unknown test type");
-  }
-  // clear memory
-  results.forEach(function (roundResults, round) {
-    roundResults.forEach(function (pageResult, page) {
-      pageResult.snapshot = null;
+  // Clear snapshot buffers and drop the task entry from the session.
+  results.forEach(function (roundResults) {
+    roundResults.forEach(function (pageResult) {
+      if (pageResult) {
+        pageResult.snapshot = null;
+        pageResult.baselineSnapshot = null;
+      }
     });
   });
+  delete session.taskResults[id];
+  delete session.tasks[id];
+}
+
+async function handleWsBinaryResult(data) {
+  // Binary frame layout:
+  //   [4 bytes BE: meta_len][meta JSON][4 bytes BE: snapshot_len]
+  //   [snapshot PNG][baseline PNG (rest)]
+  const metaLen = data.readUInt32BE(0);
+  const meta = JSON.parse(data.subarray(4, 4 + metaLen).toString("utf8"));
+  const snapshotLen = data.readUInt32BE(4 + metaLen);
+  const snapshotOffset = 8 + metaLen;
+  // Copy slices so the original WS frame buffer can be GC'd immediately.
+  const snapshot = Buffer.from(
+    data.subarray(snapshotOffset, snapshotOffset + snapshotLen)
+  );
+  const baseline =
+    data.length > snapshotOffset + snapshotLen
+      ? Buffer.from(data.subarray(snapshotOffset + snapshotLen))
+      : null;
+
+  const { browser, id, round, page, failure, lastPageNum, numberOfTasks } =
+    meta;
+  const session = getSession(browser);
+  if (!session || session.closed) {
+    return;
+  }
+  monitorBrowserTimeout(session, handleSessionTimeout);
+
+  const taskResults = session.taskResults[id];
+  if (!taskResults) {
+    return;
+  }
+  taskResults[round] ||= [];
+
+  if (taskResults[round][page - 1]) {
+    console.error(
+      `Results for ${browser}:${id}:${round}:${page - 1} were already submitted`
+    );
+    // TODO abort testing here?
+  }
+  taskResults[round][page - 1] = {
+    failure,
+    snapshot,
+    baselineSnapshot: baseline,
+    viewportWidth: meta.viewportWidth,
+    viewportHeight: meta.viewportHeight,
+    outputScale: meta.outputScale,
+  };
+  if (stats) {
+    stats.push({ browser, pdf: id, page: page - 1, round, stats: meta.stats });
+  }
+
+  const lastTaskResults = taskResults.at(-1);
+  const isDone =
+    !!lastTaskResults?.[lastPageNum - 1] ||
+    lastTaskResults?.filter(Boolean).length === numberOfTasks;
+  if (isDone) {
+    await checkRefTestResults(browser, id, taskResults);
+    session.remaining--;
+  }
 }
 
 function refTestPostHandler(parsedUrl, req, res) {
-  var pathname = parsedUrl.pathname;
-  if (
-    pathname !== "/tellMeToQuit" &&
-    pathname !== "/info" &&
-    pathname !== "/submit_task_results"
-  ) {
+  if (parsedUrl.pathname !== "/info") {
     return false;
   }
-
   var body = "";
   req.on("data", function (data) {
     body += data;
@@ -708,76 +842,7 @@ function refTestPostHandler(parsedUrl, req, res) {
   req.on("end", function () {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end();
-
-    var session;
-    if (pathname === "/tellMeToQuit") {
-      session = getSession(parsedUrl.searchParams.get("browser"));
-      monitorBrowserTimeout(session, null);
-      closeSession(session.name);
-      return;
-    }
-
-    var data = JSON.parse(body);
-    if (pathname === "/info") {
-      console.log(data.message);
-      return;
-    }
-
-    var browser = data.browser;
-    var round = data.round;
-    var id = data.id;
-    var page = data.page - 1;
-    var failure = data.failure;
-    var snapshot = data.snapshot;
-    var baselineSnapshot = data.baselineSnapshot;
-    var lastPageNum = data.lastPageNum;
-
-    session = getSession(browser);
-    monitorBrowserTimeout(session, handleSessionTimeout);
-
-    var taskResults = session.taskResults[id];
-    if (!taskResults[round]) {
-      taskResults[round] = [];
-    }
-
-    if (taskResults[round][page]) {
-      console.error(
-        "Results for " +
-          browser +
-          ":" +
-          id +
-          ":" +
-          round +
-          ":" +
-          page +
-          " were already submitted"
-      );
-      // TODO abort testing here?
-    }
-
-    taskResults[round][page] = {
-      failure,
-      snapshot,
-      baselineSnapshot,
-      viewportWidth: data.viewportWidth,
-      viewportHeight: data.viewportHeight,
-      outputScale: data.outputScale,
-    };
-    if (stats) {
-      stats.push({
-        browser,
-        pdf: id,
-        page,
-        round,
-        stats: data.stats,
-      });
-    }
-
-    var isDone = taskResults.at(-1)?.[lastPageNum - 1];
-    if (isDone) {
-      checkRefTestResults(browser, id, taskResults);
-      session.remaining--;
-    }
+    console.log(JSON.parse(body).message);
   });
   return true;
 }
@@ -799,11 +864,22 @@ function onAllSessionsClosedAfterTests(name) {
     } else if (numErrors > 0) {
       console.log("OHNOES!  Some " + name + " tests failed!");
       console.log("  " + numErrors + " of " + numRuns + " failed");
+      console.log("Here are the failing tests:");
+      for (const session of sessions) {
+        for (const { description, error } of session.failures ?? []) {
+          let line = `  - in ${colorBrowser(session.name)} | ${description}`;
+          if (error) {
+            line += ` | ${error.replaceAll(/\s+/g, " ").trim()}`;
+          }
+          console.log(line);
+        }
+      }
     } else {
       console.log("All " + name + " tests passed.");
     }
     var runtime = (Date.now() - startTime) / 1000;
     console.log(name + " tests runtime was " + runtime.toFixed(1) + " seconds");
+    process.exit(numErrors > 0 ? 1 : 0);
   };
 }
 
@@ -817,6 +893,7 @@ async function startUnitTest(testUrl, name) {
     initializeSession: session => {
       session.numRuns = 0;
       session.numErrors = 0;
+      session.failures = [];
     },
   });
 }
@@ -831,15 +908,18 @@ async function startIntegrationTest() {
     initializeSession: session => {
       session.numRuns = 0;
       session.numErrors = 0;
+      session.failures = [];
     },
   });
   global.integrationBaseUrl = `http://${host}:${server.port}/build/generic/web/viewer.html`;
   global.integrationSessions = sessions;
 
-  const results = { runs: 0, failures: 0 };
+  const results = { runs: 0, failures: 0, failureList: [] };
   await runTests(results);
   sessions[0].numRuns = results.runs;
   sessions[0].numErrors = results.failures;
+  sessions[0].failures = results.failureList;
+  sessions[0].coverage = globalThis.__coverage__;
   await Promise.all(sessions.map(session => closeSession(session.name)));
 }
 
@@ -883,10 +963,20 @@ function unitTestPostHandler(parsedUrl, req, res) {
     }
     var session = getSession(data.browser);
     session.numRuns++;
+    let status = data.status;
+    if (status === "TEST-UNEXPECTED-FAIL") {
+      status = TEST_UNEXPECTED_FAIL;
+    } else if (status === "TEST-PASS") {
+      status = TEST_PASSED;
+    }
     var message =
-      data.status + " | " + data.description + " | in " + session.name;
+      status + " | " + data.description + " | in " + colorBrowser(session.name);
     if (data.status === "TEST-UNEXPECTED-FAIL") {
       session.numErrors++;
+      session.failures.push({
+        description: data.description,
+        error: data.error,
+      });
     }
     if (data.error) {
       message += " | " + data.error;
@@ -919,9 +1009,7 @@ async function startBrowser({
     protocolTimeout: 0.75 * /* jasmine.DEFAULT_TIMEOUT_INTERVAL = */ 30000,
   };
 
-  if (!tempDir) {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfjs-"));
-  }
+  tempDir ||= fs.mkdtempSync(path.join(os.tmpdir(), "pdfjs-"));
   const printFile = path.join(tempDir, "print.pdf");
 
   if (browserName === "chrome") {
@@ -931,12 +1019,20 @@ async function startBrowser({
     // calls can run before events triggered by the previous protocol calls had
     // a chance to be processed (essentially causing events to get lost). This
     // value gives Chrome a more similar execution speed as Firefox.
-    options.slowMo = 5;
+    options.slowMo = 3;
 
-    // avoid crash
-    options.args = ["--no-sandbox", "--disable-setuid-sandbox"];
-    // silent printing in a pdf
-    options.args.push("--kiosk-printing");
+    options.args = [
+      // Avoid crashing because no sandbox is shipped by default and we only run
+      // our own trusted content in the scope of the tests (for more information
+      // see https://pptr.dev/troubleshooting#setting-up-chrome-linux-sandbox).
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      // Print PDFs silently (without print preview or user interaction).
+      "--kiosk-printing",
+      // Disable hardware acceleration (fixes rendering issues, see #15168 and
+      // #21272, and environments like GitHub Actions don't expose GPUs anyway).
+      "--disable-gpu",
+    ];
   }
 
   if (browserName === "firefox") {
@@ -955,27 +1051,38 @@ async function startBrowser({
       // Save file in output
       "browser.download.folderList": 2,
       "browser.download.dir": tempDir,
-      // Print silently in a pdf
+      // Print PDFs silently (without print preview or user interaction).
       "print.always_print_silent": true,
       print_printer: "PDF",
       "print.printer_PDF.print_to_file": true,
       "print.printer_PDF.print_to_filename": printFile,
-      // Disable gpu acceleration
+      // Disable hardware acceleration (fixes rendering issues, see #15168 and
+      // #21272, and environments like GitHub Actions don't expose GPUs anyway).
       "gfx.canvas.accelerated": false,
+      // Disable WebGPU (prevents log spam on Windows, and environments like
+      // GitHub Actions don't expose GPUs anyway).
+      "dom.webgpu.enabled": false,
       // It's helpful to see where the caret is.
       "accessibility.browsewithcaret": true,
       // Disable the newtabpage stuff.
       "browser.newtabpage.enabled": false,
       // Disable network connections to Contile.
       "browser.topsites.contile.enabled": false,
-      // Disable logging for remote settings.
+      // Disable logging for remote settings and the messaging system.
       "services.settings.loglevel": "off",
+      "messaging-system.log": "off",
+      // Prevent remote settings from using the network.
+      "services.settings.server": "data:,#remote-settings-dummy/v1",
+      // Disable Nimbus rollouts and studies.
+      "nimbus.rollouts.enabled": false,
+      "app.shield.optoutstudies.enabled": false,
       // Disable AI/ML functionality.
-      "browser.ml.enable": false,
-      "browser.ml.chat.enabled": false,
-      "browser.ml.linkPreview.enabled": false,
-      "browser.tabs.groups.smart.enabled": false,
-      "browser.tabs.groups.smart.userEnabled": false,
+      "browser.ai.control.default": "blocked",
+      "privacy.baselineFingerprintingProtection": false,
+      // Disable bounce tracking protection to avoid creating a SQLite database
+      // file that Firefox keeps locked briefly after shutdown, causing EBUSY
+      // errors in Puppeteer's profile cleanup on Windows.
+      "privacy.bounceTrackingProtection.mode": 0,
       ...extraPrefsFirefox,
     };
   }
@@ -991,10 +1098,14 @@ async function startBrowser({
   return browser;
 }
 
-async function startBrowsers({ baseUrl, initializeSession }) {
-  // Remove old browser revisions from Puppeteer's cache. Updating Puppeteer can
-  // cause new browser revisions to be downloaded, so trimming the cache will
-  // prevent the disk from filling up over time.
+async function startBrowsers({ baseUrl, initializeSession, numSessions = 1 }) {
+  // Install the browsers.
+  for (const browser of ["firefox@nightly", "chrome@stable"]) {
+    execSync(`npx puppeteer browsers install ${browser}`, { stdio: "inherit" });
+  }
+
+  // Remove old browser revisions from Puppeteer's cache. The commands above can
+  // download new browser revisions, so this prevents the disk from filling up.
   await puppeteer.trimCache();
 
   const browserNames = ["firefox", "chrome"];
@@ -1005,44 +1116,53 @@ async function startBrowsers({ baseUrl, initializeSession }) {
     browserNames.splice(0, 1);
   }
   for (const browserName of browserNames) {
-    // The session must be pushed first and augmented with the browser once
-    // it's initialized. The reason for this is that browser initialization
-    // takes more time when the browser is not found locally yet and we don't
-    // want `onAllSessionsClosed` to trigger if one of the browsers is done
-    // and the other one is still initializing, since that would mean that
-    // once the browser is initialized the server would have stopped already.
-    // Pushing the session first ensures that `onAllSessionsClosed` will
-    // only trigger once all browsers are initialized and done.
-    const session = {
-      name: browserName,
-      browser: undefined,
-      closed: false,
-    };
-    sessions.push(session);
+    for (let i = 0; i < numSessions; i++) {
+      // When running multiple sessions per browser, append an index suffix to
+      // keep session names unique. With a single session, use the plain browser
+      // name for backward compatibility.
+      const sessionName =
+        numSessions === 1 ? browserName : `${browserName}-${i}`;
 
-    // Construct the start URL from the base URL by appending query parameters
-    // for the runner if necessary.
-    let startUrl = "";
-    if (baseUrl) {
-      const queryParameters =
-        `?browser=${encodeURIComponent(browserName)}` +
-        `&manifestFile=${encodeURIComponent("/test/" + options.manifestFile)}` +
-        `&testFilter=${JSON.stringify(options.testfilter)}` +
-        `&xfaOnly=${options.xfaOnly}` +
-        `&delay=${options.statsDelay}` +
-        `&masterMode=${options.masterMode}`;
-      startUrl = baseUrl + queryParameters;
+      // The session must be pushed first and augmented with the browser once
+      // it's initialized. The reason for this is that browser initialization
+      // takes more time when the browser is not found locally yet and we don't
+      // want `onAllSessionsClosed` to trigger if one of the browsers is done
+      // and the other one is still initializing, since that would mean that
+      // once the browser is initialized the server would have stopped already.
+      // Pushing the session first ensures that `onAllSessionsClosed` will
+      // only trigger once all browsers are initialized and done.
+      const session = {
+        name: sessionName,
+        browserType: browserName,
+        sessionIndex: i,
+        sessionCount: numSessions,
+        browser: undefined,
+        page: undefined,
+        closed: false,
+      };
+      sessions.push(session);
+
+      let startUrl = "";
+      if (baseUrl) {
+        startUrl =
+          `${baseUrl}?browser=${encodeURIComponent(sessionName)}` +
+          `&testFilter=${JSON.stringify(options.testfilter)}` +
+          `&delay=${options.statsDelay}&masterMode=${options.masterMode}` +
+          `&coveragePerTest=${global.coveragePerTest || false}`;
+      }
+      await startBrowser({ browserName, startUrl })
+        .then(async function (browser) {
+          session.browser = browser;
+          const pages = await browser.pages();
+          session.page = pages[0];
+          initializeSession(session);
+        })
+        .catch(function (ex) {
+          console.log(`Error while starting ${browserName}: ${ex.message}`);
+          session.numErrors = 1;
+          closeSession(sessionName);
+        });
     }
-
-    await startBrowser({ browserName, startUrl })
-      .then(function (browser) {
-        session.browser = browser;
-        initializeSession(session);
-      })
-      .catch(function (ex) {
-        console.log(`Error while starting ${browserName}: ${ex.message}`);
-        closeSession(browserName);
-      });
   }
 }
 
@@ -1052,6 +1172,7 @@ function startServer() {
     host,
     port: options.port,
     cacheExpirationTime: 3600,
+    coverageEnabled: global.coverageEnabled || false,
   });
   server.start();
 }
@@ -1064,17 +1185,154 @@ function getSession(browser) {
   return sessions.find(session => session.name === browser);
 }
 
+function accumulatePerTestCoverage(testId, counts) {
+  let testIdx = perTestIdMap.get(testId);
+  if (testIdx === undefined) {
+    testIdx = perTestIds.length;
+    perTestIds.push(testId);
+    perTestIdMap.set(testId, testIdx);
+  }
+  for (const [fileKey, { fstarts, lines, funcs }] of Object.entries(counts)) {
+    let entry = perTestFileIndex.get(fileKey);
+    if (!entry) {
+      entry = {
+        fstarts: Object.create(null),
+        lineMap: new Map(),
+        funcMap: new Map(),
+      };
+      perTestFileIndex.set(fileKey, entry);
+    }
+    if (fstarts && Object.keys(entry.fstarts).length === 0) {
+      Object.assign(entry.fstarts, fstarts);
+    }
+    for (const line of lines) {
+      let set = entry.lineMap.get(line);
+      if (!set) {
+        set = new Set();
+        entry.lineMap.set(line, set);
+      }
+      set.add(testIdx);
+    }
+    for (const func of funcs) {
+      let set = entry.funcMap.get(func);
+      if (!set) {
+        set = new Set();
+        entry.funcMap.set(func, set);
+      }
+      set.add(testIdx);
+    }
+  }
+}
+
+async function writeCoverageData(outputDirectory) {
+  try {
+    console.log("\n### Writing code coverage data");
+
+    // Merge coverage from all sessions
+    const mergedCoverage = istanbulCoverage.createCoverageMap();
+    for (const session of sessions) {
+      if (session.coverage) {
+        mergedCoverage.merge(
+          istanbulCoverage.createCoverageMap(session.coverage)
+        );
+      }
+    }
+
+    const projectRoot = path.join(__dirname, "..");
+
+    // create a context for report generation
+    const context = libReport.createContext({
+      dir: path.join(__dirname, "..", outputDirectory),
+      coverageMap: mergedCoverage,
+    });
+
+    for (const fmt of global.coverageFormats ?? ["info"]) {
+      istanbulReportGenerator
+        .create(COVERAGE_FORMAT_TO_REPORTER[fmt], { projectRoot })
+        .execute(context);
+    }
+
+    console.log(`Total files covered: ${mergedCoverage.files().length}`);
+
+    if (global.coveragePerTest && perTestIds.length > 0) {
+      const files = Object.create(null);
+      for (const [fileKey, { fstarts, lineMap, funcMap }] of perTestFileIndex) {
+        const fileObj = Object.create(null);
+        if (Object.keys(fstarts).length > 0) {
+          fileObj.fstarts = fstarts;
+        }
+        if (lineMap.size > 0) {
+          const l = Object.create(null);
+          for (const [line, tests] of lineMap) {
+            l[line] = [...tests].sort((a, b) => a - b);
+          }
+          fileObj.l = l;
+        }
+        if (funcMap.size > 0) {
+          const f = Object.create(null);
+          for (const [name, tests] of funcMap) {
+            f[name] = [...tests].sort((a, b) => a - b);
+          }
+          fileObj.f = f;
+        }
+        files[fileKey] = fileObj;
+      }
+      const indexPath = path.join(
+        __dirname,
+        "..",
+        outputDirectory,
+        "per-test-index.json"
+      );
+      fs.writeFileSync(indexPath, JSON.stringify({ ids: perTestIds, files }));
+      console.log(
+        `Per-test index written to ${outputDirectory}/per-test-index.json`
+      );
+    }
+  } catch (err) {
+    console.error("Failed to write coverage data:", err);
+  }
+}
+
 async function closeSession(browser) {
   for (const session of sessions) {
     if (session.name !== browser) {
       continue;
     }
     if (session.browser !== undefined) {
+      // Collect coverage before closing (works with both Chrome and Firefox)
+      if (global.coverageEnabled && session.page !== undefined) {
+        try {
+          // Extract window.__coverage__ which is populated by
+          // babel-plugin-istanbul
+          const coverageJson = await session.page.evaluate(() =>
+            JSON.stringify(window.__coverage__)
+          );
+          const coverage = coverageJson ? JSON.parse(coverageJson) : null;
+
+          if (coverage && Object.keys(coverage).length > 0) {
+            session.coverage = coverage;
+            console.log(
+              `Collected coverage from ${browser}: ${Object.keys(coverage).length} files`
+            );
+          }
+        } catch (err) {
+          console.warn(
+            `Failed to collect coverage for ${browser}:`,
+            err.message
+          );
+        }
+      }
+
       await session.browser.close();
     }
     session.closed = true;
     const allClosed = sessions.every(s => s.closed);
     if (allClosed) {
+      // Write coverage data if enabled
+      if (global.coverageEnabled) {
+        await writeCoverageData(global.coverageOutput);
+      }
+
       if (tempDir) {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -1108,6 +1366,25 @@ async function main() {
     stats = [];
   }
 
+  if (options.coverage || options.coveragePerTest) {
+    global.coverageEnabled = true;
+    console.log("\n### Code coverage enabled for browser tests");
+    if (options.coverageOutput) {
+      global.coverageOutput = options.coverageOutput;
+      console.log(
+        `### Code coverage output directory: ${options.coverageOutput}`
+      );
+    }
+    global.coverageFormats = parseCoverageFormats(options.coverageFormats);
+    console.log(
+      `### Coverage formats: ${[...global.coverageFormats].join(", ")}`
+    );
+    if (options.coveragePerTest) {
+      global.coveragePerTest = true;
+      console.log("### Per-test coverage reports enabled");
+    }
+  }
+
   try {
     if (options.downloadOnly) {
       await ensurePDFsDownloaded();
@@ -1130,6 +1407,7 @@ async function main() {
     // because the teardown logic of the tests did not get a chance to run.
     console.error(e);
     await Promise.all(sessions.map(session => closeSession(session.name)));
+    process.exit(1);
   }
 }
 
@@ -1140,6 +1418,11 @@ var host = "127.0.0.1";
 var options = parseOptions();
 var stats;
 var tempDir = null;
+var taskQueue = new Map();
+var refPngCache = new Map();
+const perTestIds = [];
+const perTestIdMap = new Map();
+const perTestFileIndex = new Map();
 
 main();
 

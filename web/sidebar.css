@@ -14,7 +14,7 @@
  */
 
 .sidebar {
-  --sidebar-bg-color: light-dark(#fff, #23222b);
+  --sidebar-bg-color: var(--background-color-box, light-dark(#fff, #23222b));
   --sidebar-border-color: light-dark(
     rgb(21 20 26 / 0.1),
     rgb(251 251 254 / 0.1)
@@ -22,19 +22,35 @@
   --sidebar-box-shadow:
     0 0.25px 0.75px light-dark(rgb(0 0 0 / 0.05), rgb(0 0 0 / 0.2)),
     0 2px 6px 0 light-dark(rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.4));
+  --sidebar-backdrop-filter: none;
   --sidebar-border-radius: 8px;
   --sidebar-padding: 5px;
   --sidebar-min-width: 180px;
   --sidebar-max-width: 632px;
   --sidebar-width: 239px;
   --resizer-width: 4px;
-  --resizer-hover-bg-color: light-dark(#0062fa, #00cadb);
+  --resizer-shift: calc(0px - var(--resizer-width) - 2px);
+  --resizer-hover-bg-color: var(
+    --color-accent-primary,
+    light-dark(#0062fa, #00cadb)
+  );
+
+  /* Style the sidebar as a Nova panel. Keep this before forced-colors. */
+  /*#if MOZCENTRAL*/
+  @media -moz-pref("pdfjs.enableNova") and -moz-pref("browser.nova.enabled") {
+    --sidebar-border-color: var(--border-color-deemphasized);
+    --sidebar-box-shadow: var(--box-shadow-level-2);
+    --sidebar-border-radius: var(--panel-border-radius);
+  }
+  /*#endif*/
 
   @media screen and (forced-colors: active) {
-    --sidebar-bg-color: Canvas;
+    --sidebar-bg-color: var(--background-color-box, Canvas);
     --sidebar-border-color: CanvasText;
     --sidebar-box-shadow: none;
-    --resizer-hover-bg-color: CanvasText;
+    /* Painted on the Canvas sidebar, so --text-color rather than the accent
+       (which is ButtonText in Firefox HCM). */
+    --resizer-hover-bg-color: var(--text-color, CanvasText);
   }
 
   border-radius: var(--sidebar-border-radius);
@@ -46,6 +62,9 @@
   width: var(--sidebar-width);
   min-width: var(--sidebar-min-width);
   max-width: var(--sidebar-max-width);
+  backdrop-filter: var(--sidebar-backdrop-filter);
+  box-sizing: border-box;
+  position: relative;
 
   .sidebarResizer {
     width: var(--resizer-width);
@@ -53,9 +72,11 @@
     forced-color-adjust: none;
     cursor: ew-resize;
     position: absolute;
-    inset-block: calc(var(--sidebar-padding) + var(--sidebar-border-radius));
-    inset-inline-start: calc(0px - var(--resizer-width) / 2);
-    transition: background-color 0.5s ease-in-out;
+    inset-block: 0;
+    inset-inline-start: var(--resizer-shift);
+    transition:
+      background-color 0.5s ease-in-out,
+      border-color 0.5s ease-in-out;
     box-sizing: border-box;
     border: 1px solid transparent;
     border-block-width: 0;
@@ -63,7 +84,20 @@
 
     &:hover {
       background-color: var(--resizer-hover-bg-color);
+      border-color: white;
     }
+    &:focus-visible {
+      background-color: var(--resizer-hover-bg-color);
+      outline: none;
+    }
+
+    /* Match Firefox's Nova splitter: use its full width and rounded ends. */
+    /*#if MOZCENTRAL*/
+    @media -moz-pref("pdfjs.enableNova") and -moz-pref("browser.nova.enabled") {
+      border-inline-width: 0;
+      border-radius: var(--border-radius-large);
+    }
+    /*#endif*/
   }
 
   &.resizing {
@@ -72,6 +106,10 @@
 
     :not(.sidebarResizer) {
       pointer-events: none;
+    }
+
+    .sidebarResizer {
+      background-color: var(--resizer-hover-bg-color);
     }
   }
 }
