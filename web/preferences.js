@@ -22,9 +22,7 @@ import { AppOptions, OptionKind } from "./app_options.js";
  */
 class BasePreferences {
   #defaults = Object.freeze(
-    typeof PDFJSDev === "undefined"
-      ? AppOptions.getAll(OptionKind.PREFERENCE, /* defaultOnly = */ true)
-      : PDFJSDev.eval("DEFAULT_PREFERENCES")
+    AppOptions.getAll(OptionKind.PREFERENCE, /* defaultOnly = */ true)
   );
 
   #initializedPromise = null;
@@ -35,14 +33,6 @@ class BasePreferences {
       this.constructor === BasePreferences
     ) {
       throw new Error("Cannot initialize BasePreferences.");
-    }
-
-    if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("CHROME")) {
-      Object.defineProperty(this, "defaults", {
-        get() {
-          return this.#defaults;
-        },
-      });
     }
 
     this.#initializedPromise = this._readFromStorage(this.#defaults).then(
@@ -57,7 +47,10 @@ class BasePreferences {
       }
     );
 
-    if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")) {
+    if (
+      typeof PDFJSDev === "undefined" ||
+      PDFJSDev.test("(TESTING && !LIB) || MOZCENTRAL")
+    ) {
       window.addEventListener(
         "updatedPreference",
         async ({ detail: { name, value } }) => {
@@ -133,6 +126,10 @@ class BasePreferences {
     }
     await this.#initializedPromise;
     return AppOptions.get(name);
+  }
+
+  get defaults() {
+    return this.#defaults;
   }
 
   get initializedPromise() {

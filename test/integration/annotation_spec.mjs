@@ -51,7 +51,7 @@ describe("Annotation highlight", () => {
             highlightSelector,
             popupSelector
           );
-          expect(areSiblings).withContext(`In ${browserName}`).toEqual(true);
+          expect(areSiblings).withContext(`In ${browserName}`).toBeTrue();
         })
       );
     });
@@ -63,7 +63,7 @@ describe("Annotation highlight", () => {
             getAnnotationSelector("21R"),
             el => el.hidden
           );
-          expect(hidden).withContext(`In ${browserName}`).toEqual(true);
+          expect(hidden).withContext(`In ${browserName}`).toBeTrue();
           await page.hover(getAnnotationSelector("19R"));
           await page.waitForSelector(getAnnotationSelector("21R"), {
             visible: true,
@@ -73,7 +73,7 @@ describe("Annotation highlight", () => {
             getAnnotationSelector("21R"),
             el => el.hidden
           );
-          expect(hidden).withContext(`In ${browserName}`).toEqual(false);
+          expect(hidden).withContext(`In ${browserName}`).toBeFalse();
         })
       );
     });
@@ -95,7 +95,7 @@ describe("Annotation highlight", () => {
         pages.map(async ([browserName, page]) => {
           for (const i of [23, 22, 14]) {
             await page.click(getAnnotationSelector(`${i}R`));
-            await page.waitForSelector(`#pdfjs_internal_id_${i}R:focus`);
+            await page.waitForSelector(`#pdfjs_internal_id_${i}R:focus-within`);
           }
         })
       );
@@ -122,12 +122,12 @@ describe("Checkbox annotation", () => {
           for (const selector of selectors) {
             await page.click(selector);
             await page.waitForFunction(
-              `document.querySelector('${selector} > :first-child').checked`
+              `document.querySelector('${selector} input').checked`
             );
 
             for (const otherSelector of selectors) {
               const checked = await page.$eval(
-                `${otherSelector} > :first-child`,
+                `${otherSelector} input`,
                 el => el.checked
               );
               expect(checked)
@@ -157,9 +157,9 @@ describe("Checkbox annotation", () => {
           const selector = getAnnotationSelector("7R");
           await page.click(selector);
           await page.waitForFunction(
-            `document.querySelector('${selector} > :first-child').checked`
+            `document.querySelector('${selector} input').checked`
           );
-          expect(true).withContext(`In ${browserName}`).toEqual(true);
+          expect(true).withContext(`In ${browserName}`).toBeTrue();
         })
       );
     });
@@ -185,7 +185,7 @@ describe("Checkbox annotation", () => {
           for (const selector of selectors) {
             await page.click(selector);
             await page.waitForFunction(
-              `document.querySelector('${selector} > :first-child').checked`
+              `document.querySelector('${selector} input').checked`
             );
           }
         })
@@ -327,7 +327,7 @@ describe("Annotation and storage", () => {
           ]) {
             await page.evaluate(n => {
               window.document
-                .querySelectorAll(`[data-page-number="${n}"][class="page"]`)[0]
+                .querySelector(`[data-page-number="${n}"][class="page"]`)
                 .scrollIntoView();
             }, pageNumber);
 
@@ -343,13 +343,13 @@ describe("Annotation and storage", () => {
               getSelector(checkId),
               el => el.checked
             );
-            expect(checked).toEqual(true);
+            expect(checked).toBeTrue();
 
             checked = await page.$eval(getSelector(radio1Id), el => el.checked);
-            expect(checked).toEqual(false);
+            expect(checked).toBeFalse();
 
             checked = await page.$eval(getSelector(radio2Id), el => el.checked);
-            expect(checked).toEqual(false);
+            expect(checked).toBeFalse();
           }
 
           // Change data on page 5 and check that other pages changed.
@@ -366,7 +366,7 @@ describe("Annotation and storage", () => {
           ]) {
             await page.evaluate(n => {
               window.document
-                .querySelectorAll(`[data-page-number="${n}"][class="page"]`)[0]
+                .querySelector(`[data-page-number="${n}"][class="page"]`)
                 .scrollIntoView();
             }, pageNumber);
 
@@ -384,13 +384,13 @@ describe("Annotation and storage", () => {
               getSelector(checkId),
               el => el.checked
             );
-            expect(checked).toEqual(false);
+            expect(checked).toBeFalse();
 
             checked = await page.$eval(getSelector(radio1Id), el => el.checked);
-            expect(checked).toEqual(false);
+            expect(checked).toBeFalse();
 
             checked = await page.$eval(getSelector(radio2Id), el => el.checked);
-            expect(checked).toEqual(false);
+            expect(checked).toBeFalse();
           }
         })
       );
@@ -442,20 +442,20 @@ describe("ResetForm action", () => {
               getSelector(`${id}R`),
               el => el.checked
             );
-            expect(checked).withContext(`In ${browserName}`).toEqual(false);
+            expect(checked).withContext(`In ${browserName}`).toBeFalse();
           }
 
           let selected = await page.$eval(
             `${getSelector("78R")} [value="a"]`,
             el => el.selected
           );
-          expect(selected).withContext(`In ${browserName}`).toEqual(true);
+          expect(selected).withContext(`In ${browserName}`).toBeTrue();
 
           selected = await page.$eval(
             `${getSelector("81R")} [value="d"]`,
             el => el.selected
           );
-          expect(selected).withContext(`In ${browserName}`).toEqual(true);
+          expect(selected).withContext(`In ${browserName}`).toBeTrue();
         })
       );
     });
@@ -495,7 +495,7 @@ describe("ResetForm action", () => {
             );
             expect(checked)
               .withContext(`In ${browserName + id}`)
-              .toEqual(false);
+              .toBeFalse();
           }
 
           ids = [71, 75];
@@ -504,20 +504,20 @@ describe("ResetForm action", () => {
               getSelector(`${id}R`),
               el => el.checked
             );
-            expect(checked).withContext(`In ${browserName}`).toEqual(true);
+            expect(checked).withContext(`In ${browserName}`).toBeTrue();
           }
 
           let selected = await page.$eval(
             `${getSelector("78R")} [value="a"]`,
             el => el.selected
           );
-          expect(selected).withContext(`In ${browserName}`).toEqual(true);
+          expect(selected).withContext(`In ${browserName}`).toBeTrue();
 
           selected = await page.$eval(
             `${getSelector("81R")} [value="f"]`,
             el => el.selected
           );
-          expect(selected).withContext(`In ${browserName}`).toEqual(true);
+          expect(selected).withContext(`In ${browserName}`).toBeTrue();
         })
       );
     });
@@ -636,7 +636,7 @@ describe("ResetForm action", () => {
           pages.map(async ([browserName, page]) => {
             const selector = getAnnotationSelector("21R");
             let hidden = await page.$eval(selector, el => el.hidden);
-            expect(hidden).withContext(`In ${browserName}`).toEqual(true);
+            expect(hidden).withContext(`In ${browserName}`).toBeTrue();
 
             await page.focus(getAnnotationSelector("20R"));
             await page.keyboard.press("Enter");
@@ -644,28 +644,28 @@ describe("ResetForm action", () => {
               `document.querySelector('${selector}').hidden !== true`
             );
             hidden = await page.$eval(selector, el => el.hidden);
-            expect(hidden).withContext(`In ${browserName}`).toEqual(false);
+            expect(hidden).withContext(`In ${browserName}`).toBeFalse();
 
             await page.keyboard.press("Enter");
             await page.waitForFunction(
               `document.querySelector('${selector}').hidden !== false`
             );
             hidden = await page.$eval(selector, el => el.hidden);
-            expect(hidden).withContext(`In ${browserName}`).toEqual(true);
+            expect(hidden).withContext(`In ${browserName}`).toBeTrue();
 
             await page.keyboard.press("Enter");
             await page.waitForFunction(
               `document.querySelector('${selector}').hidden !== true`
             );
             hidden = await page.$eval(selector, el => el.hidden);
-            expect(hidden).withContext(`In ${browserName}`).toEqual(false);
+            expect(hidden).withContext(`In ${browserName}`).toBeFalse();
 
             await page.keyboard.press("Escape");
             await page.waitForFunction(
               `document.querySelector('${selector}').hidden !== false`
             );
             hidden = await page.$eval(selector, el => el.hidden);
-            expect(hidden).withContext(`In ${browserName}`).toEqual(true);
+            expect(hidden).withContext(`In ${browserName}`).toBeTrue();
           })
         );
       });
@@ -876,6 +876,244 @@ a dynamic compiler for JavaScript based on our`);
           })
         );
       });
+    });
+  });
+
+  describe("Annotation order in the DOM", () => {
+    let pages;
+
+    beforeEach(async () => {
+      pages = await loadAndWait(
+        "comments.pdf",
+        ".page[data-page-number='1'] .annotationLayer #pdfjs_internal_id_661R"
+      );
+    });
+
+    afterEach(async () => {
+      await closePages(pages);
+    });
+
+    it("must check that annotations are in the visual order", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          const sectionIds = await page.evaluate(() =>
+            [
+              ...document.querySelectorAll(
+                ".page[data-page-number='1'] .annotationLayer > section:not(.popupAnnotation)"
+              ),
+            ].map(el => el.id.split("_").pop())
+          );
+          expect(sectionIds)
+            .withContext(`In ${browserName}`)
+            .toEqual([
+              "612R",
+              "693R",
+              "687R",
+              "690R",
+              "713R",
+              "673R",
+              "613R",
+              "680R",
+              "661R",
+            ]);
+        })
+      );
+    });
+  });
+
+  describe("bug 2026037", () => {
+    let pages;
+
+    beforeEach(async () => {
+      pages = await loadAndWait("bug2026037.pdf", getAnnotationSelector("22R"));
+    });
+
+    afterEach(async () => {
+      await closePages(pages);
+    });
+
+    it("must check that spaces in a choice option display value are preserved", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          // The option's displayValue contains multiple consecutive spaces
+          // ("A        B"). Browsers collapse spaces in textContent, so the
+          // fix stores the original in a "display-value" attribute and uses
+          // non-breaking spaces (\u00A0) in textContent.
+          const displayAttr = await page.$eval(
+            `${getSelector("22R")} option`,
+            el => el.getAttribute("display-value")
+          );
+          expect(displayAttr)
+            .withContext(`In ${browserName}`)
+            .toEqual("A        B");
+
+          const textContent = await page.$eval(
+            `${getSelector("22R")} option`,
+            el => el.textContent
+          );
+          expect(textContent)
+            .withContext(`In ${browserName}`)
+            .toEqual("A\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0B");
+
+          const exportValue = await page.$eval(
+            `${getSelector("22R")} option`,
+            el => el.value
+          );
+          expect(exportValue)
+            .withContext(`In ${browserName}`)
+            .toEqual("a        b");
+        })
+      );
+    });
+  });
+});
+
+describe("RichMedia annotation", () => {
+  describe("multimedia_annotations.pdf", () => {
+    let pages;
+
+    beforeEach(async () => {
+      pages = await loadAndWait(
+        "multimedia_annotations.pdf",
+        getAnnotationSelector("4R")
+      );
+    });
+
+    afterEach(async () => {
+      await closePages(pages);
+    });
+
+    it("must play the embedded video when clicking the play button", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          const annotationSelector = getAnnotationSelector("4R");
+          const buttonSelector = `${annotationSelector} .mediaPlayButton`;
+          const videoSelector = `${annotationSelector} video.mediaContent`;
+
+          // Initially only the play button (over the poster) is shown.
+          await page.waitForSelector(buttonSelector, { timeout: 0 });
+          await page.click(buttonSelector);
+
+          // Clicking it loads the embedded media into a <video> element.
+          await page.waitForSelector(videoSelector, { timeout: 0 });
+          const hasSource = await page.$eval(videoSelector, el =>
+            el.src.startsWith("blob:")
+          );
+          expect(hasSource).withContext(`In ${browserName}`).toBeTrue();
+        })
+      );
+    });
+
+    it("must play the embedded audio when clicking the play button", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          const annotationSelector = getAnnotationSelector("5R");
+          const buttonSelector = `${annotationSelector} .mediaPlayButton`;
+          const audioSelector = `${annotationSelector} audio.mediaContent`;
+
+          // Initially only the play button is shown.
+          await page.waitForSelector(buttonSelector, { timeout: 0 });
+          await page.click(buttonSelector);
+
+          // Clicking it loads the embedded media into an <audio> element.
+          await page.waitForSelector(audioSelector, { timeout: 0 });
+          const hasSource = await page.$eval(audioSelector, el =>
+            el.src.startsWith("blob:")
+          );
+          expect(hasSource).withContext(`In ${browserName}`).toBeTrue();
+        })
+      );
+    });
+  });
+});
+
+describe("Screen annotation (rendition)", () => {
+  describe("multimedia_annotations.pdf", () => {
+    let pages;
+
+    beforeEach(async () => {
+      pages = await loadAndWait(
+        "multimedia_annotations.pdf",
+        getAnnotationSelector("30R")
+      );
+    });
+
+    afterEach(async () => {
+      await closePages(pages);
+    });
+
+    it("must play the rendition video when clicking the play button", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          const annotationSelector = getAnnotationSelector("30R");
+          const buttonSelector = `${annotationSelector} .mediaPlayButton`;
+          const videoSelector = `${annotationSelector} video.mediaContent`;
+
+          await page.waitForSelector(buttonSelector, { visible: true });
+          await page.click(buttonSelector);
+
+          await page.waitForSelector(videoSelector, { visible: true });
+          const hasSource = await page.$eval(videoSelector, el =>
+            el.src.startsWith("blob:")
+          );
+          expect(hasSource).withContext(`In ${browserName}`).toBeTrue();
+        })
+      );
+    });
+
+    it("must play the rendition audio when clicking the play button", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          const annotationSelector = getAnnotationSelector("6R");
+          const buttonSelector = `${annotationSelector} .mediaPlayButton`;
+          const audioSelector = `${annotationSelector} audio.mediaContent`;
+
+          await page.waitForSelector(buttonSelector, { visible: true });
+          await page.click(buttonSelector);
+
+          await page.waitForSelector(audioSelector, { visible: true });
+          const hasSource = await page.$eval(audioSelector, el =>
+            el.src.startsWith("blob:")
+          );
+          expect(hasSource).withContext(`In ${browserName}`).toBeTrue();
+        })
+      );
+    });
+  });
+});
+
+describe("Sound annotation", () => {
+  describe("multimedia_annotations.pdf", () => {
+    let pages;
+
+    beforeEach(async () => {
+      pages = await loadAndWait(
+        "multimedia_annotations.pdf",
+        getAnnotationSelector("7R")
+      );
+    });
+
+    afterEach(async () => {
+      await closePages(pages);
+    });
+
+    it("must play the embedded sound when clicking the play button", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          const annotationSelector = getAnnotationSelector("7R");
+          const buttonSelector = `${annotationSelector} .mediaPlayButton`;
+          const audioSelector = `${annotationSelector} audio.mediaContent`;
+
+          await page.waitForSelector(buttonSelector, { visible: true });
+          await page.click(buttonSelector);
+
+          await page.waitForSelector(audioSelector, { visible: true });
+          const hasSource = await page.$eval(audioSelector, el =>
+            el.src.startsWith("blob:")
+          );
+          expect(hasSource).withContext(`In ${browserName}`).toBeTrue();
+        })
+      );
     });
   });
 });

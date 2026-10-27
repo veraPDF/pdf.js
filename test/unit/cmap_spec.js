@@ -14,7 +14,11 @@
  */
 
 import { CMap, CMapFactory, IdentityCMap } from "../../src/core/cmap.js";
-import { CMAP_URL, DefaultCMapReaderFactory } from "./test_utils.js";
+import {
+  CMAP_URL,
+  DefaultBinaryDataFactory,
+  fetchBuiltInCMapHelper,
+} from "./test_utils.js";
 import { Name } from "../../src/core/primitives.js";
 import { StringStream } from "../../src/core/stream.js";
 
@@ -22,16 +26,12 @@ describe("cmap", function () {
   let fetchBuiltInCMap;
 
   beforeAll(function () {
-    // Allow CMap testing in Node.js, e.g. for Travis.
-    const CMapReaderFactory = new DefaultCMapReaderFactory({
-      baseUrl: CMAP_URL,
+    const binaryDataFactory = new DefaultBinaryDataFactory({
+      cMapUrl: CMAP_URL,
     });
 
-    fetchBuiltInCMap = function (name) {
-      return CMapReaderFactory.fetch({
-        name,
-      });
-    };
+    fetchBuiltInCMap = name =>
+      fetchBuiltInCMapHelper(binaryDataFactory, /* cMapPacked = */ true, name);
   });
 
   afterAll(function () {
@@ -139,11 +139,11 @@ describe("cmap", function () {
       fetchBuiltInCMap,
       useCMap: null,
     });
-    expect(cmap instanceof CMap).toEqual(true);
+    expect(cmap).toBeInstanceOf(CMap);
     expect(cmap.useCMap).not.toBeNull();
-    expect(cmap.builtInCMap).toBeFalsy();
+    expect(cmap.builtInCMap).toBeFalse();
     expect(cmap.length).toEqual(0x20a7);
-    expect(cmap.isIdentityCMap).toEqual(false);
+    expect(cmap.isIdentityCMap).toBeFalse();
   });
 
   it("parses cmapname", async function () {
@@ -157,7 +157,7 @@ describe("cmap", function () {
     const str = "/WMode 1 def\n";
     const stream = new StringStream(str);
     const cmap = await CMapFactory.create({ encoding: stream });
-    expect(cmap.vertical).toEqual(true);
+    expect(cmap.vertical).toBeTrue();
   });
 
   it("loads built in cmap", async function () {
@@ -166,11 +166,11 @@ describe("cmap", function () {
       fetchBuiltInCMap,
       useCMap: null,
     });
-    expect(cmap instanceof CMap).toEqual(true);
+    expect(cmap).toBeInstanceOf(CMap);
     expect(cmap.useCMap).toBeNull();
-    expect(cmap.builtInCMap).toBeTruthy();
+    expect(cmap.builtInCMap).toBeTrue();
     expect(cmap.length).toEqual(0x20a7);
-    expect(cmap.isIdentityCMap).toEqual(false);
+    expect(cmap.isIdentityCMap).toBeFalse();
   });
 
   it("loads built in identity cmap", async function () {
@@ -179,12 +179,12 @@ describe("cmap", function () {
       fetchBuiltInCMap,
       useCMap: null,
     });
-    expect(cmap instanceof IdentityCMap).toEqual(true);
-    expect(cmap.vertical).toEqual(false);
+    expect(cmap).toBeInstanceOf(IdentityCMap);
+    expect(cmap.vertical).toBeFalse();
     expect(cmap.length).toEqual(0x10000);
     expect(function () {
       return cmap.isIdentityCMap;
-    }).toThrow(new Error("should not access .isIdentityCMap"));
+    }).toThrowError("should not access .isIdentityCMap");
   });
 
   it("attempts to load a non-existent built-in CMap", async function () {
@@ -196,17 +196,21 @@ describe("cmap", function () {
       });
 
       // Shouldn't get here.
-      expect(false).toEqual(true);
+      expect(false).toBeTrue();
     } catch (reason) {
-      expect(reason instanceof Error).toEqual(true);
+      expect(reason).toBeInstanceOf(Error);
       expect(reason.message).toEqual("Unknown CMap name: null");
     }
   });
 
   it("attempts to load a built-in CMap without the necessary API parameters", async function () {
     function tmpFetchBuiltInCMap(name) {
-      const CMapReaderFactory = new DefaultCMapReaderFactory({});
-      return CMapReaderFactory.fetch({ name });
+      const binaryDataFactory = new DefaultBinaryDataFactory({});
+      return fetchBuiltInCMapHelper(
+        binaryDataFactory,
+        /* cMapPacked = */ true,
+        name
+      );
     }
 
     try {
@@ -217,22 +221,25 @@ describe("cmap", function () {
       });
 
       // Shouldn't get here.
-      expect(false).toEqual(true);
+      expect(false).toBeTrue();
     } catch (reason) {
-      expect(reason instanceof Error).toEqual(true);
+      expect(reason).toBeInstanceOf(Error);
       expect(reason.message).toEqual(
-        "Ensure that the `cMapUrl` and `cMapPacked` API parameters are provided."
+        "Ensure that the `cMapUrl` API parameter is provided."
       );
     }
   });
 
   it("attempts to load a built-in CMap with inconsistent API parameters", async function () {
     function tmpFetchBuiltInCMap(name) {
-      const CMapReaderFactory = new DefaultCMapReaderFactory({
-        baseUrl: CMAP_URL,
-        isCompressed: false,
+      const binaryDataFactory = new DefaultBinaryDataFactory({
+        cMapUrl: CMAP_URL,
       });
-      return CMapReaderFactory.fetch({ name });
+      return fetchBuiltInCMapHelper(
+        binaryDataFactory,
+        /* cMapPacked = */ false,
+        name
+      );
     }
 
     try {
@@ -243,12 +250,12 @@ describe("cmap", function () {
       });
 
       // Shouldn't get here.
-      expect(false).toEqual(true);
+      expect(false).toBeTrue();
     } catch (reason) {
-      expect(reason instanceof Error).toEqual(true);
+      expect(reason).toBeInstanceOf(Error);
       const message = reason.message;
-      expect(message.startsWith("Unable to load CMap at: ")).toEqual(true);
-      expect(message.endsWith("/external/bcmaps/Adobe-Japan1-1")).toEqual(true);
+      expect(message.startsWith("Unable to load CMap data at: ")).toBeTrue();
+      expect(message.endsWith("/external/bcmaps/Adobe-Japan1-1")).toBeTrue();
     }
   });
 });

@@ -19,7 +19,7 @@ class LZWStream extends DecodeStream {
   constructor(str, maybeLength, earlyChange) {
     super(maybeLength);
 
-    this.str = str;
+    this.stream = str;
     this.dict = str.dict;
     this.cachedData = 0;
     this.bitsCached = 0;
@@ -46,7 +46,7 @@ class LZWStream extends DecodeStream {
     let bitsCached = this.bitsCached;
     let cachedData = this.cachedData;
     while (bitsCached < n) {
-      const c = this.str.getByte();
+      const c = this.stream.getByte();
       if (c === -1) {
         this.eof = true;
         return null;
@@ -56,7 +56,6 @@ class LZWStream extends DecodeStream {
     }
     this.bitsCached = bitsCached -= n;
     this.cachedData = cachedData;
-    this.lastCode = null;
     return (cachedData >>> bitsCached) & ((1 << n) - 1);
   }
 
@@ -66,11 +65,7 @@ class LZWStream extends DecodeStream {
     let estimatedDecodedSize = blockSize * 2;
     let i, j, q;
 
-    const lzwState = this.lzwState;
-    if (!lzwState) {
-      return; // eof was found
-    }
-
+    const { lzwState } = this;
     const earlyChange = lzwState.earlyChange;
     let nextCode = lzwState.nextCode;
     const dictionaryValues = lzwState.dictionaryValues;

@@ -138,7 +138,7 @@ class TextAccessibilityManager {
     }
 
     const children = this.#textChildren;
-    if (!children || children.length === 0) {
+    if (!children?.length) {
       return;
     }
 
@@ -198,7 +198,7 @@ class TextAccessibilityManager {
     }
 
     const children = this.#textChildren;
-    if (!children || children.length === 0) {
+    if (!children?.length) {
       return null;
     }
 
@@ -238,14 +238,10 @@ class TextAccessibilityManager {
       return id;
     }
 
-    const elementToCompare = contentElement || element;
     const index = binarySearchFirstItem(
       children,
       node =>
-        TextAccessibilityManager.#compareElementPositions(
-          elementToCompare,
-          node
-        ) < 0
+        TextAccessibilityManager.#compareElementPositions(element, node) < 0
     );
 
     if (index === 0) {

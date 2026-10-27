@@ -14,6 +14,7 @@
  */
 
 import { DOMSVGFactory } from "pdfjs-lib";
+import { internalOpt } from "./internal_evt.js";
 
 class AltTextManager {
   #clickAC = null;
@@ -87,6 +88,15 @@ class AltTextManager {
     saveButton.addEventListener("click", this.#save.bind(this));
     optionDescription.addEventListener("change", onUpdateUIState);
     optionDecorative.addEventListener("change", onUpdateUIState);
+    textarea.addEventListener("keydown", e => {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key === "Enter" &&
+        !saveButton.disabled
+      ) {
+        this.#save();
+      }
+    });
 
     this.#overlayManager.register(dialog);
   }
@@ -161,8 +171,9 @@ class AltTextManager {
     this.#uiManager.removeEditListeners();
 
     this.#resizeAC = new AbortController();
-    this.#eventBus._on("resize", this.#setPosition.bind(this), {
+    this.#eventBus.on("resize", this.#setPosition.bind(this), {
       signal: this.#resizeAC.signal,
+      ...internalOpt,
     });
 
     try {

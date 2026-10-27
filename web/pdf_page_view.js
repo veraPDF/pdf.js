@@ -14,15 +14,14 @@
  */
 
 // eslint-disable-next-line max-len
-/** @typedef {import("../src/display/display_utils").PageViewport} PageViewport */
+/** @typedef {import("../src/display/page_viewport").PageViewport} PageViewport */
 // eslint-disable-next-line max-len
 /** @typedef {import("../src/display/optional_content_config").OptionalContentConfig} OptionalContentConfig */
 /** @typedef {import("./event_utils").EventBus} EventBus */
-/** @typedef {import("./interfaces").IL10n} IL10n */
-/** @typedef {import("./interfaces").IRenderableView} IRenderableView */
 // eslint-disable-next-line max-len
 /** @typedef {import("./pdf_rendering_queue").PDFRenderingQueue} PDFRenderingQueue */
 /** @typedef {import("./comment_manager.js").CommentManager} CommentManager */
+/** @typedef {import("./l10n.js").L10n} L10n */
 
 import {
   AbortException,
@@ -31,13 +30,13 @@ import {
   PixelsPerInch,
   setLayerDimensions,
   shadow,
+  TextLayerImages,
 } from "pdfjs-lib";
 import {
   approximateFraction,
   calcRound,
   DEFAULT_SCALE,
   floorToDivide,
-  RenderingStates,
   TextLayerMode,
 } from "./ui_utils.js";
 import { AnnotationEditorLayerBuilder } from "./annotation_editor_layer_builder.js";
@@ -48,6 +47,7 @@ import { BasePDFPageView } from "./base_pdf_page_view.js";
 import { DrawLayerBuilder } from "./draw_layer_builder.js";
 import { GenericL10n } from "web-null_l10n";
 import { PDFPageDetailView } from "./pdf_page_detail_view.js";
+import { RenderingStates } from "./renderable_view.js";
 import { SimpleLinkService } from "./pdf_link_service.js";
 import { StructTreeLayerBuilder } from "./struct_tree_layer_builder.js";
 import { TextAccessibilityManager } from "./text_accessibility.js";
@@ -90,6 +90,12 @@ import { XfaLayerBuilder } from "./xfa_layer_builder.js";
  *   `maxCanvasDim`, it will draw a second canvas on top of the CSS-zoomed one,
  *   that only renders the part of the page that is close to the viewport.
  *   The default value is `true`.
+ * @property {number} [imagesRightClickMinSize] - All images whose width and
+ *  height are at least this value (in pixels) will be lazily inserted in the
+ *  dom to allow right-clicking and saving them. Use `-1` to disable this.
+ * @property {boolean} [enableSelectionRendering] - When enabled, renders text
+ *   selections in the draw layer.
+ *   The default value is `true`.
  * @property {boolean} [enableOptimizedPartialRendering] - When enabled, PDF
  *   rendering will keep track of which areas of the page each PDF operation
  *   affects. Then, when rendering a partial page (if `enableDetailCanvas` is
@@ -98,12 +104,14 @@ import { XfaLayerBuilder } from "./xfa_layer_builder.js";
  * @property {Object} [pageColors] - Overwrites background and foreground colors
  *   with user defined ones in order to improve readability in high contrast
  *   mode.
- * @property {IL10n} [l10n] - Localization service.
+ * @property {L10n} [l10n] - Localization service.
  * @property {Object} [layerProperties] - The object that is used to lookup
  *   the necessary layer-properties.
  * @property {boolean} [enableAutoLinking] - Enable creation of hyperlinks from
  *   text that look like URLs. The default value is `true`.
  * @property {CommentManager} [commentManager] - The comment manager instance.
+ *   to.
+ * @property {AbortSignal} [abortSignal]
  */
 
 const DEFAULT_LAYER_PROPERTIES =
@@ -130,10 +138,9 @@ const LAYERS_ORDER = new Map([
   ["xfaLayer", 3],
 ]);
 
-/**
- * @implements {IRenderableView}
- */
 class PDFPageView extends BasePDFPageView {
+  #abortSignal = null;
+
   #annotationMode = AnnotationMode.ENABLE_FORMS;
 
   #canvasWrapper = null;
@@ -176,11 +183,11 @@ class PDFPageView extends BasePDFPageView {
   constructor(options) {
     super(options);
 
-    const container = options.container;
-    const defaultViewport = options.defaultViewport;
+    const { container, defaultViewport } = options;
 
     this.renderingId = "page" + this.id;
     this.#layerProperties = options.layerProperties || DEFAULT_LAYER_PROPERTIES;
+    this.#abortSignal = options.abortSignal || null;
 
     this.pdfPage = null;
     this.pageLabel = null;
@@ -231,7 +238,6 @@ class PDFPageView extends BasePDFPageView {
     div.setAttribute("data-l10n-id", "pdfjs-page-landmark");
     div.setAttribute("data-l10n-args", JSON.stringify({ page: this.id }));
     this.div = div;
-
     this.#setDimensions();
     container?.append(div);
 
@@ -275,6 +281,35 @@ class PDFPageView extends BasePDFPageView {
     }
   }
 
+  clone(id) {
+    const clone = new PDFPageView({
+      container: null,
+      eventBus: this.eventBus,
+      pagesColors: this.pageColors,
+      renderingQueue: this.renderingQueue,
+      enableOptimizedPartialRendering: this.enableOptimizedPartialRendering,
+      minDurationToUpdateCanvas: this.minDurationToUpdateCanvas,
+      defaultViewport: this.viewport,
+      id,
+      layerProperties: this.#layerProperties,
+      abortSignal: this.#abortSignal,
+      scale: this.scale,
+      optionalContentConfigPromise: this._optionalContentConfigPromise,
+      textLayerMode: this.#textLayerMode,
+      annotationMode: this.#annotationMode,
+      imageResourcesPath: this.imageResourcesPath,
+      enableDetailCanvas: this.enableDetailCanvas,
+      maxCanvasPixels: this.maxCanvasPixels,
+      maxCanvasDim: this.maxCanvasDim,
+      capCanvasAreaFactor: this.capCanvasAreaFactor,
+      enableAutoLinking: this.#enableAutoLinking,
+      commentManager: this.#commentManager,
+      l10n: this.l10n,
+    });
+    clone.setPdfPage(this.pdfPage.clone(id - 1));
+    return clone;
+  }
+
   #addLayer(div, name) {
     const pos = LAYERS_ORDER.get(name);
     const oldDiv = this.#layers[pos];
@@ -316,6 +351,35 @@ class PDFPageView extends BasePDFPageView {
       viewport,
       /* mustFlip = */ true,
       /* mustRotate = */ false
+    );
+  }
+
+  updatePageNumber(newPageNumber) {
+    const oldPageNumber = this.id;
+
+    if (oldPageNumber !== newPageNumber) {
+      this.id = newPageNumber;
+      this.renderingId = `page${newPageNumber}`;
+      if (this.pdfPage) {
+        this.pdfPage.pageNumber = newPageNumber;
+      }
+      // TODO: do we set the page label ?
+      this.setPageLabel(this.pageLabel);
+      const { div } = this;
+      div.setAttribute("data-page-number", newPageNumber);
+      div.setAttribute(
+        "data-l10n-args",
+        JSON.stringify({ page: newPageNumber })
+      );
+      this._textHighlighter.pageIdx = newPageNumber - 1;
+    }
+    // Don't update the page index for the draw layer, since it's just used as
+    // an identifier.
+
+    // Page mutations clear the editor layer map; restore unchanged pages too.
+    this.#layerProperties.annotationEditorUIManager?.updatePageIndex(
+      oldPageNumber - 1,
+      newPageNumber - 1
     );
   }
 
@@ -364,6 +428,15 @@ class PDFPageView extends BasePDFPageView {
     this.pdfPage?.cleanup();
   }
 
+  deleteMe(isCut) {
+    if (isCut) {
+      this.div.remove();
+      return;
+    }
+    this.destroy();
+    this.#layerProperties.annotationEditorUIManager?.deletePage(this.id);
+  }
+
   hasEditableAnnotations() {
     return !!this.annotationLayer?.hasEditableAnnotations();
   }
@@ -388,19 +461,37 @@ class PDFPageView extends BasePDFPageView {
     });
   }
 
-  async #renderAnnotationLayer() {
+  async #renderAnnotationLayer(textLayerPromise = null) {
+    const { annotationLayer, textLayer } = this;
+
     let error = null;
     try {
       await this.annotationLayer.render({
         viewport: this.viewport,
         intent: "display",
         structTreeLayer: this.structTreeLayer,
+        optionalContentConfigPromise: this._optionalContentConfigPromise,
       });
     } catch (ex) {
       console.error("#renderAnnotationLayer:", ex);
       error = ex;
     } finally {
       this.#dispatchLayerRendered("annotationlayerrendered", error);
+    }
+
+    if (this.#enableAutoLinking && textLayerPromise) {
+      this.#injectLinkAnnotations(textLayerPromise, annotationLayer, textLayer);
+    }
+  }
+
+  // The detail view re-renders checkbox/radio appearances at a higher
+  // resolution into the shared `annotationCanvasMap`; move them into the
+  // annotation layer so they replace the lower-resolution ones. This only
+  // consumes pending canvases (no re-render), and is a no-op until their
+  // elements exist, so it's safe to call while the layer is still rendering.
+  _refreshAnnotationLayer() {
+    if (this._annotationCanvasMap?.size) {
+      this.annotationLayer?.refreshCanvases();
     }
   }
 
@@ -458,13 +549,18 @@ class PDFPageView extends BasePDFPageView {
   }
 
   async #renderTextLayer() {
-    if (!this.textLayer) {
-      return;
-    }
     let error = null;
     try {
       await this.textLayer.render({
         viewport: this.viewport,
+        images: this.imageCoordinates
+          ? new TextLayerImages(
+              this.imagesRightClickMinSize,
+              this.imageCoordinates,
+              this.viewport,
+              () => this.canvas
+            )
+          : null,
       });
     } catch (ex) {
       if (ex instanceof AbortException) {
@@ -486,14 +582,10 @@ class PDFPageView extends BasePDFPageView {
    * aria-owns to work.
    */
   async #renderStructTreeLayer() {
-    if (!this.textLayer) {
-      return;
-    }
-
     const treeDom = await this.structTreeLayer?.render();
     if (treeDom) {
       this.l10n.pause();
-      this.structTreeLayer?.addElementsToTextLayer();
+      this.structTreeLayer?.updateTextLayer();
       if (this.canvas && treeDom.parentNode !== this.canvas) {
         // Pause translation when inserting the structTree in the DOM.
         this.canvas.append(treeDom);
@@ -513,24 +605,25 @@ class PDFPageView extends BasePDFPageView {
     this._textHighlighter.enable();
   }
 
-  async #injectLinkAnnotations(textLayerPromise) {
+  async #injectLinkAnnotations(textLayerPromise, annotationLayer, textLayer) {
     let error = null;
     try {
       await textLayerPromise;
 
-      if (!this.annotationLayer) {
+      if (
+        annotationLayer !== this.annotationLayer ||
+        textLayer !== this.textLayer
+      ) {
         return; // Rendering was cancelled while the textLayerPromise resolved.
       }
-      await this.annotationLayer.injectLinkAnnotations(
+      await annotationLayer.injectLinkAnnotations(
         Autolinker.processLinks(this)
       );
     } catch (ex) {
       console.error("#injectLinkAnnotations:", ex);
       error = ex;
     }
-    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
-      this.#dispatchLayerRendered("linkannotationsadded", error);
-    }
+    this.#dispatchLayerRendered("linkannotationsadded", error);
   }
 
   _resetCanvas() {
@@ -650,6 +743,7 @@ class PDFPageView extends BasePDFPageView {
         this.detailView ??= new PDFPageDetailView({
           pageView: this,
           enableOptimizedPartialRendering: this.enableOptimizedPartialRendering,
+          imagesRightClickMinSize: -1,
         });
         this.detailView.update({ visibleArea });
       } else if (this.detailView) {
@@ -766,6 +860,9 @@ class PDFPageView extends BasePDFPageView {
       }
     }
     this.cssTransform({});
+    // Drawings stay visible in the unrotated canvas wrapper while the other
+    // kept layers are hidden, so reposition them before reset().
+    this.annotationEditorLayer?.update(this.viewport);
     this.reset({
       keepAnnotationLayer: true,
       keepAnnotationEditorLayer: true,
@@ -842,9 +939,14 @@ class PDFPageView extends BasePDFPageView {
     if (this.structTreeLayer && !this.textLayer) {
       this.structTreeLayer = null;
     }
+    // The annotation editor layer and the draw layer keep references on the
+    // text layer (the latter uses its div in order to render the selection),
+    // hence they must be recreated too.
     if (
       this.annotationEditorLayer &&
-      (!keepAnnotationEditorLayer || !this.annotationEditorLayer.div)
+      (!keepAnnotationEditorLayer ||
+        !this.annotationEditorLayer.div ||
+        !this.textLayer)
     ) {
       if (this.drawLayer) {
         this.drawLayer.cancel();
@@ -852,6 +954,10 @@ class PDFPageView extends BasePDFPageView {
       }
       this.annotationEditorLayer.cancel();
       this.annotationEditorLayer = null;
+    }
+    if (this.drawLayer && !this.textLayer) {
+      this.drawLayer.cancel();
+      this.drawLayer = null;
     }
     if (this.xfaLayer && (!keepXfaLayer || !this.xfaLayer.div)) {
       this.xfaLayer.cancel();
@@ -936,7 +1042,7 @@ class PDFPageView extends BasePDFPageView {
     return canvasWrapper;
   }
 
-  _getRenderingContext(canvas, transform, recordOperations) {
+  _getRenderingContext(canvas, transform, recordOperations, recordImages) {
     return {
       canvas,
       transform,
@@ -947,6 +1053,7 @@ class PDFPageView extends BasePDFPageView {
       pageColors: this.pageColors,
       isEditing: this.#isEditing,
       recordOperations,
+      recordImages,
     };
   }
 
@@ -985,7 +1092,11 @@ class PDFPageView extends BasePDFPageView {
           this.#addLayer(textLayerDiv, "textLayer");
           this.l10n.resume();
         },
+        abortSignal: this.#abortSignal,
       });
+      if (this.enableSelectionRendering) {
+        this.textLayer.div.classList.add("selectionRendering");
+      }
     }
 
     if (
@@ -1070,12 +1181,15 @@ class PDFPageView extends BasePDFPageView {
       this.#hasRestrictedScaling &&
       !this.recordedBBoxes;
 
+    const recordImages =
+      this.imagesRightClickMinSize !== -1 && !this.imageCoordinates;
+
     // Rendering area
     const transform = outputScale.scaled
       ? [outputScale.sx, 0, 0, outputScale.sy, 0, 0]
       : null;
     const resultPromise = this._drawCanvas(
-      this._getRenderingContext(canvas, transform, recordBBoxes),
+      this._getRenderingContext(canvas, transform, recordBBoxes, recordImages),
       () => {
         prevCanvas?.remove();
         this._resetCanvas();
@@ -1101,34 +1215,33 @@ class PDFPageView extends BasePDFPageView {
         viewport.rawDims
       );
 
-      const textLayerPromise = this.#renderTextLayer();
+      const textLayerPromise = this.textLayer ? this.#renderTextLayer() : null;
 
       if (this.annotationLayer) {
-        await this.#renderAnnotationLayer();
-
-        if (this.#enableAutoLinking && this.annotationLayer && this.textLayer) {
-          await this.#injectLinkAnnotations(textLayerPromise);
-        }
+        await this.#renderAnnotationLayer(textLayerPromise);
       }
+
+      this.drawLayer ||= new DrawLayerBuilder({
+        pageIndex: this.id,
+        textLayer: this.enableSelectionRendering ? this.textLayer?.div : null,
+        filterFactory: this.pdfPage?.filterFactory,
+        pageColors: this.pageColors,
+      });
+      await this.#renderDrawLayer();
+      this.drawLayer.setParent(canvasWrapper);
 
       const { annotationEditorUIManager } = this.#layerProperties;
 
       if (!annotationEditorUIManager) {
         return;
       }
-      this.drawLayer ||= new DrawLayerBuilder({
-        pageIndex: this.id,
-      });
-      await this.#renderDrawLayer();
-      this.drawLayer.setParent(canvasWrapper);
-
       if (
         this.annotationLayer ||
         this.#annotationMode === AnnotationMode.DISABLE
       ) {
         this.annotationEditorLayer ||= new AnnotationEditorLayerBuilder({
           uiManager: annotationEditorUIManager,
-          pdfPage,
+          pageIndex: this.id - 1,
           l10n,
           structTreeLayer: this.structTreeLayer,
           accessibilityManager: this._accessibilityManager,

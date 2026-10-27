@@ -17,6 +17,7 @@
 import { AppOptions } from "./app_options.js";
 import { BaseExternalServices } from "./external_services.js";
 import { BasePreferences } from "./preferences.js";
+import { DownloadManager as GenericDownloadManager } from "./download_manager.js";
 import { GenericL10n } from "./genericl10n.js";
 import { GenericScripting } from "./generic_scripting.js";
 import { SignatureStorage } from "./generic_signature_storage.js";
@@ -35,8 +36,8 @@ if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("CHROME")) {
   // Run this code outside DOMContentLoaded to make sure that the URL
   // is rewritten as soon as possible.
   const queryString = document.location.search.slice(1);
-  const m = /(^|&)file=([^&]*)/.exec(queryString);
-  let defaultUrl = m ? decodeURIComponent(m[2]) : "";
+  const m = /(?:^|&)file=([^&]*)/.exec(queryString);
+  let defaultUrl = m ? decodeURIComponent(m[1]) : "";
   if (!defaultUrl && queryString.startsWith("DNR:")) {
     // Redirected via DNR, see registerPdfRedirectRule in pdfHandler.js.
     defaultUrl = queryString.slice(4);
@@ -271,11 +272,10 @@ let port;
 // 4. Page: Invoke callback.
 function setReferer(url, callback) {
   dnrRequestId ??= crypto.getRandomValues(new Uint32Array(1))[0] % 0x80000000;
-  if (!port) {
-    // The background page will accept the port, and keep adding the Referer
-    // request header to requests to |url| until the port is disconnected.
-    port = chrome.runtime.connect({ name: "chromecom-referrer" });
-  }
+  // The background page will accept the port, and keep adding the Referer
+  // request header to requests to |url| until the port is disconnected.
+  port ??= chrome.runtime.connect({ name: "chromecom-referrer" });
+
   port.onDisconnect.addListener(onDisconnect);
   port.onMessage.addListener(onMessage);
   // Initiate the information exchange.
@@ -307,6 +307,25 @@ function setReferer(url, callback) {
     port.onDisconnect.removeListener(onDisconnect);
     port.onMessage.removeListener(onMessage);
     callback();
+  }
+}
+
+/**
+ * This "should" really extend the `BaseDownloadManager` class,
+ * however doing it this way instead reduces code duplication.
+ */
+class DownloadManager extends GenericDownloadManager {
+  _getOpenDataUrl(blobUrl, filename, dest = null) {
+    // In the Chrome extension, the URL is rewritten using the history API
+    // in viewer.js, so an absolute URL must be generated.
+    let url =
+      chrome.runtime.getURL("/content/web/viewer.html") +
+      "?file=" +
+      encodeURIComponent(blobUrl + "#" + filename);
+    if (dest) {
+      url += `#${escape(dest)}`;
+    }
+    return url;
   }
 }
 
@@ -419,7 +438,10 @@ class ExternalServices extends BaseExternalServices {
   }
 
   createScripting() {
-    return new GenericScripting(AppOptions.get("sandboxBundleSrc"));
+    return new GenericScripting(
+      AppOptions.get("sandboxBundleSrc"),
+      AppOptions.get("wasmUrl")
+    );
   }
 
   createSignatureStorage(eventBus, signal) {
@@ -437,4 +459,4 @@ class MLManager {
   }
 }
 
-export { ExternalServices, initCom, MLManager, Preferences };
+export { DownloadManager, ExternalServices, initCom, MLManager, Preferences };
