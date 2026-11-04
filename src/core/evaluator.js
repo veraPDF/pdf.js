@@ -571,7 +571,6 @@ class PartialEvaluator {
         initialTextState,
         initialGraphicsState,
       });
-    operatorList.addOp(OPS.paintFormXObjectEnd, []);
 
     if (group) {
       groupOptions.needsIsolation = newOpList.needsIsolation || !!smask;
@@ -2425,6 +2424,7 @@ class PartialEvaluator {
 
             break;
           case OPS.beginMarkedContent:
+            boundingBoxCalculator.parseOperator(fn, args);
             if (args?.some(arg => arg instanceof Dict)) {
               warn(`getOperatorList - ignoring operator: ${fn}`);
               continue;
