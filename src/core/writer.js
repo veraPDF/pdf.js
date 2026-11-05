@@ -19,7 +19,6 @@ import {
   escapePDFName,
   escapeString,
   getSizeInBytes,
-  numberToString,
   parseXFAPath,
 } from "./core_utils.js";
 import { SimpleDOMNode, SimpleXMLParser } from "./xml_parser.js";
@@ -27,29 +26,34 @@ import { Stream, StringStream } from "./stream.js";
 import { BaseStream } from "./base_stream.js";
 import { calculateMD5 } from "./calculate_md5.js";
 
-async function writeObject(ref, obj, buffer, { encrypt = null }) {
-  const transform = encrypt?.createCipherTransform(ref.num, ref.gen);
+async function writeObject(
+  ref,
+  obj,
+  buffer,
+  { encrypt = null, encryptRef = null }
+) {
+  // Avoid to encrypt the encrypt dictionary.
+  const transform =
+    encrypt && encryptRef !== ref
+      ? encrypt.createCipherTransform(ref.num, ref.gen)
+      : null;
   buffer.push(`${ref.num} ${ref.gen} obj\n`);
-  if (obj instanceof Dict) {
-    await writeDict(obj, buffer, transform);
-  } else if (obj instanceof BaseStream) {
-    await writeStream(obj, buffer, transform);
-  } else if (Array.isArray(obj) || ArrayBuffer.isView(obj)) {
-    await writeArray(obj, buffer, transform);
-  }
+  await writeValue(obj, buffer, transform);
   buffer.push("\nendobj\n");
 }
 
 async function writeDict(dict, buffer, transform) {
   buffer.push("<<");
-  for (const key of dict.getKeys()) {
+  for (const [key, rawObj] of dict.getRawEntries()) {
     buffer.push(` /${escapePDFName(key)} `);
-    await writeValue(dict.getRaw(key), buffer, transform);
+    await writeValue(rawObj, buffer, transform);
   }
   buffer.push(">>");
 }
 
 async function writeStream(stream, buffer, transform) {
+  stream = stream.getOriginalStream();
+  stream.reset();
   let bytes = stream.getBytes();
   const { dict } = stream;
 
@@ -63,11 +67,27 @@ async function writeStream(stream, buffer, transform) {
     : filter;
   const isFilterZeroFlateDecode = isName(filterZero, "FlateDecode");
 
+  // These filters already compress the data, so we shouldn't try to compress it
+  // again.
+  const isFilterZeroImageDecode =
+    isName(filterZero, "DCTDecode") ||
+    isName(filterZero, "JPXDecode") ||
+    isName(filterZero, "JBIG2Decode") ||
+    isName(filterZero, "CCITTFaxDecode") ||
+    isName(filterZero, "LZWDecode");
+  const isFilterZeroCompressedObject =
+    isFilterZeroFlateDecode ||
+    isFilterZeroImageDecode ||
+    isName(filterZero, "BrotliDecode");
+
   // If the string is too small there is no real benefit in compressing it.
   // The number 256 is arbitrary, but it should be reasonable.
   const MIN_LENGTH_FOR_COMPRESSING = 256;
 
-  if (bytes.length >= MIN_LENGTH_FOR_COMPRESSING || isFilterZeroFlateDecode) {
+  if (
+    !isFilterZeroCompressedObject &&
+    bytes.length >= MIN_LENGTH_FOR_COMPRESSING
+  ) {
     try {
       const cs = new CompressionStream("deflate");
       const writer = cs.writable.getWriter();
@@ -83,8 +103,7 @@ async function writeStream(stream, buffer, transform) {
       // SHOULD BE FIXED IN FUTURE PDF.JS VERSIONS - END
 
       // Response::text doesn't return the correct data.
-      const buf = await new Response(cs.readable).arrayBuffer();
-      bytes = new Uint8Array(buf);
+      bytes = await new Response(cs.readable).bytes();
 
       let newFilter, newParams;
       if (!filter) {
@@ -122,16 +141,38 @@ async function writeStream(stream, buffer, transform) {
 
 async function writeArray(array, buffer, transform) {
   buffer.push("[");
-  let first = true;
-  for (const val of array) {
-    if (!first) {
+  for (let i = 0, ii = array.length; i < ii; i++) {
+    await writeValue(array[i], buffer, transform);
+    if (i < ii - 1) {
       buffer.push(" ");
-    } else {
-      first = false;
     }
-    await writeValue(val, buffer, transform);
   }
   buffer.push("]");
+}
+
+// The exponential notation isn't valid in a PDF, hence a number is always
+// written with all its digits.
+function numberToPDFString(value) {
+  // `toFixed` uses the exponential notation from 1e21 on, so such a number is
+  // written thanks to BigInt: it's necessarily an integer, and `isInteger` also
+  // rules out NaN and ±Infinity for which BigInt would throw.
+  if (Number.isInteger(value) && Math.abs(value) >= 1e21) {
+    return BigInt(value).toString();
+  }
+
+  // Below that limit `toFixed(10)` never uses the exponential notation (unlike
+  // `toString` which uses it under 1e-6) and it rounds the value: it always
+  // adds 10 decimals, hence scan them backwards to remove the trailing zeros,
+  // and then the dot itself when none of the decimals is left.
+  const str = value.toFixed(10);
+  let end = str.length;
+  while (str[end - 1] === "0") {
+    end--;
+  }
+  if (str[end - 1] === ".") {
+    end--;
+  }
+  return str.slice(0, end);
 }
 
 async function writeValue(value, buffer, transform) {
@@ -147,7 +188,11 @@ async function writeValue(value, buffer, transform) {
     }
     buffer.push(`(${escapeString(value)})`);
   } else if (typeof value === "number") {
-    buffer.push(numberToString(value));
+    // Don't try to round numbers in general, it could lead to have degenerate
+    // matrices (e.g. [0.000008 0 0 0.000008 0 0]).
+    // The numbers must be "rounded" only when pdf.js is producing them and the
+    // current transformation matrix is well known.
+    buffer.push(numberToPDFString(value));
   } else if (typeof value === "boolean") {
     buffer.push(value.toString());
   } else if (value instanceof Dict) {
@@ -204,7 +249,7 @@ function writeXFADataForAcroform(str, changes) {
       continue;
     }
     const { path, value } = xfa;
-    if (!path) {
+    if (!path || value === null) {
       continue;
     }
     const nodePath = parseXFAPath(path);
@@ -271,8 +316,7 @@ function updateXFA({ xfaData, xfaDatasetsRef, changes, xref }) {
     const datasets = xref.fetchIfRef(xfaDatasetsRef);
     xfaData = writeXFADataForAcroform(datasets.getString(), changes);
   }
-  const xfaDataStream = new StringStream(xfaData);
-  xfaDataStream.dict = new Dict(xref);
+  const xfaDataStream = new StringStream(xfaData, new Dict(xref));
   xfaDataStream.dict.setIfName("Type", "EmbeddedFile");
 
   changes.put(xfaDatasetsRef, {
@@ -308,7 +352,7 @@ async function getXRefTable(xrefInfo, baseOffset, newRefs, newXref, buffer) {
   }
   computeIDs(baseOffset, xrefInfo, newXref);
   buffer.push("trailer\n");
-  await writeDict(newXref, buffer);
+  await writeDict(newXref, buffer, null);
   buffer.push("\nstartxref\n", baseOffset.toString(), "\n%%EOF\n");
 }
 
@@ -334,10 +378,17 @@ async function getXRefStreamTable(
   const xrefTableData = [];
   let maxOffset = 0;
   let maxGen = 0;
-  for (const { ref, data } of newRefs) {
+  for (const { ref, data, objStreamRef, index } of newRefs) {
     let gen;
     maxOffset = Math.max(maxOffset, baseOffset);
-    if (data !== null) {
+    // The first number in each entry is the type (see 7.5.8.3):
+    //  0: free object
+    //  1: in-use object
+    //  2: compressed object
+    if (objStreamRef) {
+      gen = index;
+      xrefTableData.push([2, objStreamRef.num, gen]);
+    } else if (data !== null) {
       gen = Math.min(ref.gen, 0xffff);
       xrefTableData.push([1, baseOffset, gen]);
       baseOffset += data.length;
@@ -373,13 +424,13 @@ async function getXRefStreamTable(
 function computeIDs(baseOffset, xrefInfo, newXref) {
   if (Array.isArray(xrefInfo.fileIds) && xrefInfo.fileIds.length > 0) {
     const md5 = computeMD5(baseOffset, xrefInfo);
-    newXref.set("ID", [xrefInfo.fileIds[0], md5]);
+    newXref.set("ID", [xrefInfo.fileIds[0] || md5, md5]);
   }
 }
 
 function getTrailerDict(xrefInfo, changes, useXrefStream) {
   const newXref = new Dict(null);
-  newXref.set("Prev", xrefInfo.startXRef);
+  newXref.setIfDefined("Prev", xrefInfo?.startXRef);
   const refForXrefTable = xrefInfo.newRef;
   if (useXrefStream) {
     changes.put(refForXrefTable, { data: "" });
@@ -388,21 +439,20 @@ function getTrailerDict(xrefInfo, changes, useXrefStream) {
   } else {
     newXref.set("Size", refForXrefTable.num);
   }
-  if (xrefInfo.rootRef !== null) {
-    newXref.set("Root", xrefInfo.rootRef);
-  }
-  if (xrefInfo.infoRef !== null) {
-    newXref.set("Info", xrefInfo.infoRef);
-  }
-  if (xrefInfo.encryptRef !== null) {
-    newXref.set("Encrypt", xrefInfo.encryptRef);
-  }
+  newXref.setIfDefined("Root", xrefInfo?.rootRef);
+  newXref.setIfDefined("Info", xrefInfo?.infoRef);
+  newXref.setIfDefined("Encrypt", xrefInfo?.encryptRef);
+
   return newXref;
 }
 
 async function writeChanges(changes, xref, buffer = []) {
   const newRefs = [];
-  for (const [ref, { data }] of changes.items()) {
+  for (const [ref, { data, objStreamRef, index }] of changes.items()) {
+    if (objStreamRef) {
+      newRefs.push({ ref, data, objStreamRef, index });
+      continue;
+    }
     if (data === null || typeof data === "string") {
       newRefs.push({ ref, data });
       continue;
@@ -485,4 +535,4 @@ async function incrementalUpdate({
   return array;
 }
 
-export { incrementalUpdate, writeChanges, writeDict, writeObject };
+export { incrementalUpdate, writeChanges, writeDict, writeObject, writeValue };

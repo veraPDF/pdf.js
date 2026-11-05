@@ -13,12 +13,33 @@
  * limitations under the License.
  */
 
-import { AnnotationPrefix, stringToPDFString, warn } from "../shared/util.js";
-import { Dict, isName, Name, Ref, RefSetCache } from "./primitives.js";
-import { lookupNormalRect, stringToAsciiOrUTF16BE } from "./core_utils.js";
+import {
+  AnnotationPrefix,
+  makeArr,
+  shadow,
+  stringToUTF8String,
+  warn,
+} from "../shared/util.js";
+import {
+  Dict,
+  isDict,
+  isName,
+  Name,
+  Ref,
+  RefMap,
+  RefSet,
+} from "./primitives.js";
+import { lookupNormalRect, MissingDataException } from "./core_utils.js";
+import { stringToAsciiOrUTF16BE, stringToPDFString } from "./string_utils.js";
+import { BaseStream } from "./base_stream.js";
+import { FileSpec } from "./file_spec.js";
 import { NumberTree } from "./name_number_tree.js";
 
 const MAX_DEPTH = 40;
+const TABLE_SPAN_ATTRIBUTES = [
+  ["RowSpan", "rowSpan"],
+  ["ColSpan", "colSpan"],
+];
 
 const StructElementType = {
   PAGE_CONTENT: 1,
@@ -29,45 +50,73 @@ const StructElementType = {
 };
 
 class StructTreeRoot {
+  kidRefToPosition = undefined;
+
+  parentTree = null;
+
+  roleMap = new Map();
+
+  structParentIds = null;
+
   constructor(xref, rootDict, rootRef) {
     this.xref = xref;
     this.dict = rootDict;
     this.ref = rootRef instanceof Ref ? rootRef : null;
-    this.roleMap = new Map();
-    this.structParentIds = null;
+
+    const roleMap = rootDict.get("RoleMap");
+    if (roleMap instanceof Dict) {
+      for (const [key, value] of roleMap) {
+        if (value instanceof Name) {
+          this.roleMap.set(key, value.name);
+        }
+      }
+    }
+    const parentTree = rootDict.getRaw("ParentTree");
+    if (parentTree) {
+      this.parentTree = new NumberTree(parentTree, xref);
+    }
   }
 
-  init() {
-    this.readRoleMap();
+  getKidPosition(kidRef) {
+    if (this.kidRefToPosition === undefined) {
+      const obj = this.dict.get("K");
+      if (Array.isArray(obj)) {
+        const map = (this.kidRefToPosition = new Map());
+        for (let i = 0, ii = obj.length; i < ii; i++) {
+          const ref = obj[i];
+          if (ref) {
+            map.set(ref.toString(), i);
+          }
+        }
+      } else if (obj instanceof Dict) {
+        this.kidRefToPosition = new Map([[obj.objId, 0]]);
+      } else if (!obj) {
+        this.kidRefToPosition = new Map();
+      } else {
+        this.kidRefToPosition = null;
+      }
+    }
+    return this.kidRefToPosition
+      ? (this.kidRefToPosition.get(kidRef) ?? NaN)
+      : -1;
   }
 
-  #addIdToPage(pageRef, id, type) {
+  #addIdToPage(pageRef, id, type, objId) {
     if (!(pageRef instanceof Ref) || id < 0) {
       return;
     }
-    this.structParentIds ||= new RefSetCache();
-    let ids = this.structParentIds.get(pageRef);
-    if (!ids) {
-      ids = [];
-      this.structParentIds.put(pageRef, ids);
-    }
-    ids.push([id, type]);
+    (this.structParentIds ??= new RefMap())
+      .getOrPutComputed(pageRef, makeArr)
+      .push([id, type, objId]);
   }
 
-  addAnnotationIdToPage(pageRef, id) {
-    this.#addIdToPage(pageRef, id, StructElementType.ANNOTATION);
-  }
-
-  readRoleMap() {
-    const roleMapDict = this.dict.get("RoleMap");
-    if (!(roleMapDict instanceof Dict)) {
-      return;
-    }
-    for (const [key, value] of roleMapDict) {
-      if (value instanceof Name) {
-        this.roleMap.set(key, value.name);
-      }
-    }
+  addAnnotationIdToPage(pageRef, id, ref) {
+    this.#addIdToPage(
+      pageRef,
+      id,
+      StructElementType.ANNOTATION,
+      ref instanceof Ref ? ref.toString() : null
+    );
   }
 
   static async canCreateStructureTree({
@@ -119,7 +168,7 @@ class StructTreeRoot {
     changes,
   }) {
     const root = await pdfManager.ensureCatalog("cloneDict");
-    const cache = new RefSetCache();
+    const cache = new RefMap();
     cache.put(catalogRef, root);
 
     const structTreeRootRef = xref.getNewTemporaryRef();
@@ -236,7 +285,7 @@ class StructTreeRoot {
   async updateStructureTree({ newAnnotationsByPage, pdfManager, changes }) {
     const { ref: structTreeRootRef, xref } = this;
     const structTreeRoot = this.dict.clone();
-    const cache = new RefSetCache();
+    const cache = new RefMap();
     cache.put(structTreeRootRef, structTreeRoot);
 
     let parentTreeRef = structTreeRoot.getRaw("ParentTree");
@@ -413,12 +462,7 @@ class StructTreeRoot {
     for (const element of elements) {
       if (element.structTreeParentId) {
         const id = parseInt(element.structTreeParentId.split("_mc")[1], 10);
-        let elems = idToElements.get(id);
-        if (!elems) {
-          elems = [];
-          idToElements.set(id, elems);
-        }
-        elems.push(element);
+        idToElements.getOrInsertComputed(id, makeArr).push(element);
       }
     }
 
@@ -507,11 +551,9 @@ class StructTreeRoot {
       return;
     }
 
-    let cachedParentDict = cache.get(parentRef);
-    if (!cachedParentDict) {
-      cachedParentDict = parentDict.clone();
-      cache.put(parentRef, cachedParentDict);
-    }
+    const cachedParentDict = cache.getOrPutComputed(parentRef, () =>
+      parentDict.clone()
+    );
     const parentKidsRaw = cachedParentDict.getRaw("K");
     let cachedParentKids =
       parentKidsRaw instanceof Ref ? cache.get(parentKidsRaw) : null;
@@ -552,6 +594,172 @@ class StructElementNode {
     const name = nameObj instanceof Name ? nameObj.name : "";
     const { root } = this.tree;
     return root.roleMap.get(name) ?? name;
+  }
+
+  get mathML() {
+    let AFs = this.dict.get("AF") || [];
+    if (!Array.isArray(AFs)) {
+      AFs = [AFs];
+    }
+    for (let af of AFs) {
+      af = this.xref.fetchIfRef(af);
+      if (
+        !isDict(af, "Filespec") ||
+        !isName(af.get("AFRelationship"), "Supplement")
+      ) {
+        continue;
+      }
+      const fileStream = FileSpec.pickPlatformItem(af.get("EF"));
+      if (
+        !(fileStream instanceof BaseStream) ||
+        !isDict(fileStream.dict, "EmbeddedFile") ||
+        !isName(fileStream.dict.get("Subtype"), "application/mathml+xml")
+      ) {
+        continue;
+      }
+      // The default encoding for xml files is UTF-8.
+      return stringToUTF8String(fileStream.getString());
+    }
+    for (const attributes of this.attributes) {
+      // This stuff isn't in the spec, but MS Office seems to use it.
+      if (isName(attributes.get("O"), "MSFT_Office")) {
+        const mathml = attributes.get("MSFT_MathML");
+        return mathml ? stringToPDFString(mathml) : null;
+      }
+    }
+    return null;
+  }
+
+  #collectAttributes(value, attributes) {
+    const pending = [value];
+    const visited = new RefSet();
+
+    while (pending.length > 0) {
+      value = pending.pop();
+      if (value instanceof Ref) {
+        // Only indirect references can make a PDF attribute graph cyclic.
+        if (visited.has(value)) {
+          continue;
+        }
+        visited.put(value);
+        value = this.xref.fetch(value);
+      }
+      if (value instanceof BaseStream) {
+        value = value.dict;
+      }
+      if (value instanceof Dict) {
+        attributes.push(value);
+        continue;
+      }
+      if (!Array.isArray(value)) {
+        continue;
+      }
+
+      // Process entries in source order. Attribute arrays may interleave
+      // attribute objects and revision numbers.
+      for (let i = value.length - 1; i >= 0; i--) {
+        if (!Number.isInteger(value[i])) {
+          pending.push(value[i]);
+        }
+      }
+    }
+  }
+
+  get attributes() {
+    const attributes = [];
+
+    const classes = this.dict.getArray("C");
+    if (classes !== undefined) {
+      const classMap = this.tree.rootDict?.get("ClassMap");
+      if (classMap instanceof Dict) {
+        // Class names may be interleaved with revision numbers.
+        for (const className of Array.isArray(classes) ? classes : [classes]) {
+          if (className instanceof Name) {
+            this.#collectAttributes(
+              classMap.getRaw(className.name),
+              attributes
+            );
+          }
+        }
+      }
+    }
+
+    // Explicit attributes take precedence over attributes from a class.
+    this.#collectAttributes(this.dict.getRaw("A"), attributes);
+
+    return shadow(this, "attributes", attributes);
+  }
+
+  get tableAttributes() {
+    const { role } = this;
+    if (role !== "Table" && role !== "TH" && role !== "TD") {
+      return null;
+    }
+
+    const map = new Map();
+    for (const attributes of this.attributes) {
+      if (!isName(attributes.get("O"), "Table")) {
+        continue;
+      }
+
+      if (role === "Table") {
+        if (attributes.has("Summary")) {
+          const summary = attributes.get("Summary");
+          if (typeof summary === "string" && summary) {
+            map.set("summary", stringToPDFString(summary));
+          } else {
+            map.delete("summary");
+          }
+        }
+        continue;
+      }
+
+      for (const [key, name] of TABLE_SPAN_ATTRIBUTES) {
+        if (!attributes.has(key)) {
+          continue;
+        }
+        const value = attributes.get(key);
+        if (Number.isInteger(value) && value > 1) {
+          map.set(name, value);
+        } else {
+          // Omit default and invalid values, clearing any earlier class value.
+          map.delete(name);
+        }
+      }
+
+      if (attributes.has("Headers")) {
+        map.delete("headers");
+        const headers = attributes.getArray("Headers");
+        if (Array.isArray(headers)) {
+          const ids = headers
+            .filter(header => typeof header === "string")
+            .map(stringToPDFString);
+          if (ids.length > 0) {
+            map.set("headers", ids);
+          }
+        }
+      }
+
+      if (role === "TH" && attributes.has("Scope")) {
+        map.delete("scope");
+        const scope = attributes.get("Scope");
+        if (
+          scope instanceof Name &&
+          ["Row", "Column", "Both"].includes(scope.name)
+        ) {
+          map.set("scope", scope.name);
+        }
+      }
+
+      if (role === "TH" && attributes.has("Short")) {
+        map.delete("short");
+        const short = attributes.get("Short");
+        if (typeof short === "string" && short) {
+          map.set("short", stringToPDFString(short));
+        }
+      }
+    }
+    return map.size ? map : null;
   }
 
   parseKids() {
@@ -695,7 +903,7 @@ class StructTreePage {
       return {};
     }
 
-    const parentTree = this.rootDict.get("ParentTree");
+    const { parentTree } = this.root;
     if (!parentTree) {
       return {};
     }
@@ -706,10 +914,9 @@ class StructTreePage {
     }
 
     const map = new Map();
-    const numberTree = new NumberTree(parentTree, this.xref);
 
     if (Number.isInteger(id)) {
-      const parentArray = numberTree.get(id);
+      const parentArray = parentTree.get(id);
       if (Array.isArray(parentArray)) {
         for (const ref of parentArray) {
           if (ref instanceof Ref) {
@@ -723,19 +930,21 @@ class StructTreePage {
       return {};
     }
     const structParentToObjIdMap = {};
-    for (const [elemId, type] of ids) {
-      const obj = numberTree.get(elemId);
-      structParentToObjIdMap[elemId] = +(obj.objId.match(/^\d+/) ?? [-1])[0];
-      if (obj) {
-        const elem = this.addNode(this.xref.fetchIfRef(obj), map);
-        if (
-          elem?.kids?.length === 1 &&
-          elem.kids[0].type === StructElementType.OBJECT
-        ) {
-          // The node in the struct tree is wrapping an object (annotation
-          // or xobject), so we need to update the type of the node to match
-          // the type of the object.
-          elem.kids[0].type = type;
+    for (const [elemId, type, objId] of ids) {
+      const obj = parentTree.get(elemId);
+      structParentToObjIdMap[elemId] = +(objId.match(/^\d+/) ?? [-1])[0];
+      if (!obj) {
+        continue;
+      }
+      const elem = this.addNode(this.xref.fetchIfRef(obj), map);
+      if (!elem || !objId) {
+        continue;
+      }
+      // Match the annotation by object reference because its structure
+      // element may have other children.
+      for (const kid of elem.kids) {
+        if (kid.type === StructElementType.OBJECT && kid.refObjId === objId) {
+          kid.type = type;
         }
       }
     }
@@ -757,6 +966,23 @@ class StructTreePage {
 
     const element = new StructElementNode(this, dict);
     map.set(dict, element);
+    switch (element.role) {
+      case "L":
+      case "LBody":
+      case "LI":
+      case "Table":
+      case "THead":
+      case "TBody":
+      case "TFoot":
+      case "TR": {
+        // Always collect all child nodes of lists and tables, even empty ones
+        for (const kid of element.kids) {
+          if (kid.type === StructElementType.ELEMENT) {
+            this.addNode(kid.dict, map, level - 1);
+          }
+        }
+      }
+    }
 
     const parent = dict.get("P");
 
@@ -788,31 +1014,14 @@ class StructTreePage {
   }
 
   addTopLevelNode(dict, element) {
-    const obj = this.rootDict.get("K");
-    if (!obj) {
+    const index = this.root.getKidPosition(dict.objId);
+    if (isNaN(index)) {
       return false;
     }
-
-    if (obj instanceof Dict) {
-      if (obj.objId !== dict.objId) {
-        return false;
-      }
-      this.nodes[0] = element;
-      return true;
+    if (index !== -1) {
+      this.nodes[index] = element;
     }
-
-    if (!Array.isArray(obj)) {
-      return true;
-    }
-    let save = false;
-    for (let i = 0; i < obj.length; i++) {
-      const kidRef = obj[i];
-      if (kidRef?.toString() === dict.objId) {
-        this.nodes[i] = element;
-        save = true;
-      }
-    }
-    return save;
+    return true;
   }
 
   /**
@@ -838,29 +1047,55 @@ class StructTreePage {
         obj.alt = stringToPDFString(alt);
       }
 
-      const a = node.dict.get("A");
-      if (a instanceof Dict) {
-        const bbox = lookupNormalRect(a.getArray("BBox"), null);
-        if (bbox) {
-          obj.bbox = bbox;
-        } else {
-          const width = a.get("Width");
-          const height = a.get("Height");
-          if (
-            typeof width === "number" &&
-            width > 0 &&
-            typeof height === "number" &&
-            height > 0
-          ) {
-            obj.bbox = [0, 0, width, height];
-          }
-        }
-        // TODO: If the bbox is not available, we should try to get it from
-        // the content stream.
-        // For example when rendering on the canvas the commands between the
-        // beginning and the end of the marked-content sequence, we can
-        // compute the overall bbox.
+      // Note that this must not be called `id`, since that name is already
+      // used, with a different meaning, on the content/object/annotation
+      // children below.
+      const structId = node.dict.get("ID");
+      if (obj.role === "TH" && typeof structId === "string" && structId) {
+        obj.structId = stringToPDFString(structId);
       }
+      node.tableAttributes?.forEach((val, key) => {
+        obj[key] = val;
+      });
+
+      if (obj.role === "Formula") {
+        try {
+          const { mathML } = node;
+          if (mathML) {
+            obj.mathML = mathML;
+          }
+        } catch (ex) {
+          if (ex instanceof MissingDataException) {
+            throw ex;
+          }
+          warn(`Ignoring mathML: "${ex}".`);
+        }
+      }
+
+      let bbox = null,
+        size = null;
+      for (const a of node.attributes) {
+        bbox = lookupNormalRect(a.getArray("BBox"), bbox);
+        const width = a.get("Width");
+        const height = a.get("Height");
+        if (
+          typeof width === "number" &&
+          width > 0 &&
+          typeof height === "number" &&
+          height > 0
+        ) {
+          size = [0, 0, width, height];
+        }
+      }
+      // Prefer BBox because Width and Height cannot recover its position.
+      if (bbox || size) {
+        obj.bbox = bbox ?? size;
+      }
+      // TODO: If the bbox is not available, we should try to get it from
+      // the content stream.
+      // For example when rendering on the canvas the commands between the
+      // beginning and the end of the marked-content sequence, we can
+      // compute the overall bbox.
 
       const lang = node.dict.get("Lang");
       if (typeof lang === "string") {

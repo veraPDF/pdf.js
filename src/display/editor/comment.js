@@ -154,7 +154,7 @@ class Comment {
       comment.ariaControlsElements = [
         this.#editor._uiManager.getCommentDialogElement(),
       ];
-      comment.setAttribute("data-l10n-id", "pdfjs-editor-edit-comment-button");
+      comment.setAttribute("data-l10n-id", "pdfjs-editor-add-comment-button");
     }
 
     const signal = this.#editor._uiManager._signal;
@@ -311,6 +311,20 @@ class Comment {
     }
     this.#text = text;
     this.#date = new Date();
+    this.#deleted = false;
+  }
+
+  /**
+   * Restore the comment data (used for undo).
+   * @param {Object} data - The comment data to restore.
+   * @param {string} data.text - The comment text.
+   * @param {string|null} data.richText - The rich text content.
+   * @param {Date|null} data.date - The original date.
+   */
+  restoreData({ text, richText, date }) {
+    this.#text = text;
+    this.#richText = richText;
+    this.#date = date;
     this.#deleted = false;
   }
 

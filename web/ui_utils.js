@@ -13,24 +13,15 @@
  * limitations under the License.
  */
 
-import { MathClamp } from "pdfjs-lib";
-
 const DEFAULT_SCALE_VALUE = "auto";
 const DEFAULT_SCALE = 1.0;
 const DEFAULT_SCALE_DELTA = 1.1;
 const MIN_SCALE = 0.1;
-const MAX_SCALE = 10.0;
+const MAX_SCALE = 25.0;
 const UNKNOWN_SCALE = 0;
 const MAX_AUTO_SCALE = 1.25;
 const SCROLLBAR_PADDING = 40;
 const VERTICAL_PADDING = 5;
-
-const RenderingStates = {
-  INITIAL: 0,
-  RUNNING: 1,
-  PAUSED: 2,
-  FINISHED: 3,
-};
 
 const PresentationModeState = {
   UNKNOWN: 0,
@@ -85,11 +76,8 @@ const AutoPrintRegExp = /\bprint\s*\(/;
  *   specifying the offset from the top left edge.
  * @param {number} [spot.left]
  * @param {number} [spot.top]
- * @param {boolean} [scrollMatches] - When scrolling search results into view,
- *   ignore elements that either: Contains marked content identifiers,
- *   or have the CSS-rule `overflow: hidden;` set. The default value is `false`.
  */
-function scrollIntoView(element, spot, scrollMatches = false) {
+function scrollIntoView(element, spot) {
   // Assuming offsetParent is available (it's not available when viewer is in
   // hidden iframe or object). We have to scroll: if the offsetParent is not set
   // producing the error. See also animationStarted.
@@ -101,11 +89,8 @@ function scrollIntoView(element, spot, scrollMatches = false) {
   let offsetY = element.offsetTop + element.clientTop;
   let offsetX = element.offsetLeft + element.clientLeft;
   while (
-    (parent.clientHeight === parent.scrollHeight &&
-      parent.clientWidth === parent.scrollWidth) ||
-    (scrollMatches &&
-      (parent.classList.contains("markedContent") ||
-        getComputedStyle(parent).overflow === "hidden"))
+    parent.clientHeight === parent.scrollHeight &&
+    parent.clientWidth === parent.scrollWidth
   ) {
     offsetY += parent.offsetTop;
     offsetX += parent.offsetLeft;
@@ -120,17 +105,7 @@ function scrollIntoView(element, spot, scrollMatches = false) {
       offsetY += spot.top;
     }
     if (spot.left !== undefined) {
-      if (scrollMatches) {
-        const elementWidth = element.getBoundingClientRect().width;
-        const padding = MathClamp(
-          (parent.clientWidth - elementWidth) / 2,
-          20,
-          400
-        );
-        offsetX += spot.left - padding;
-      } else {
-        offsetX += spot.left;
-      }
+      offsetX += spot.left;
       parent.scrollLeft = offsetX;
     }
   }
@@ -142,43 +117,40 @@ function scrollIntoView(element, spot, scrollMatches = false) {
  * PDF.js friendly one: with scroll debounce and scroll direction.
  */
 function watchScroll(viewAreaElement, callback, abortSignal = undefined) {
-  const debounceScroll = function (evt) {
-    if (rAF) {
-      return;
-    }
-    // schedule an invocation of scroll for next animation frame.
-    rAF = window.requestAnimationFrame(function viewAreaElementScrolled() {
-      rAF = null;
+  function onRAF() {
+    rAF = null;
 
-      const currentX = viewAreaElement.scrollLeft;
-      const lastX = state.lastX;
-      if (currentX !== lastX) {
-        state.right = currentX > lastX;
-      }
-      state.lastX = currentX;
-      const currentY = viewAreaElement.scrollTop;
-      const lastY = state.lastY;
-      if (currentY !== lastY) {
-        state.down = currentY > lastY;
-      }
-      state.lastY = currentY;
-      callback(state);
-    });
-  };
+    const currentX = viewAreaElement.scrollLeft;
+    const lastX = state.lastX;
+    if (currentX !== lastX) {
+      state.right = currentX > lastX;
+    }
+    state.lastX = currentX;
+    const currentY = viewAreaElement.scrollTop;
+    const lastY = state.lastY;
+    if (currentY !== lastY) {
+      state.down = currentY > lastY;
+    }
+    state.lastY = currentY;
+    callback(state);
+  }
 
   const state = {
     right: true,
     down: true,
     lastX: viewAreaElement.scrollLeft,
     lastY: viewAreaElement.scrollTop,
-    _eventHandler: debounceScroll,
   };
 
   let rAF = null;
-  viewAreaElement.addEventListener("scroll", debounceScroll, {
-    useCapture: true,
-    signal: abortSignal,
-  });
+  viewAreaElement.addEventListener(
+    "scroll",
+    () => {
+      // Schedule an invocation of scroll for next animation frame, when needed.
+      rAF ??= window.requestAnimationFrame(onRAF);
+    },
+    { useCapture: true, signal: abortSignal }
+  );
   abortSignal?.addEventListener(
     "abort",
     () => window.cancelAnimationFrame(rAF),
@@ -200,6 +172,7 @@ function parseQueryString(query) {
   return params;
 }
 
+// eslint-disable-next-line no-control-regex
 const InvisibleCharsRegExp = /[\x00-\x1F]/g;
 
 /**
@@ -291,14 +264,11 @@ function approximateFraction(x) {
       b = q;
     }
   }
-  let result;
   // Select closest of the neighbours to x.
   if (x_ - a / b < c / d - x_) {
-    result = x_ === x ? [a, b] : [b, a];
-  } else {
-    result = x_ === x ? [c, d] : [d, c];
+    return x_ === x ? [a, b] : [b, a];
   }
-  return result;
+  return x_ === x ? [c, d] : [d, c];
 }
 
 /**
@@ -424,6 +394,11 @@ function backtrackBeforeAllVisibleElements(index, views, top) {
     index = i;
   }
   return index;
+}
+
+function visibleSort(a, b) {
+  const pc = a.percent - b.percent;
+  return Math.abs(pc) > 0.001 ? -pc : a.id - b.id; // ensure stability
 }
 
 /**
@@ -603,13 +578,7 @@ function getVisibleElements({
     last = visible.at(-1);
 
   if (sortByVisibility) {
-    visible.sort(function (a, b) {
-      const pc = a.percent - b.percent;
-      if (Math.abs(pc) > 0.001) {
-        return -pc;
-      }
-      return a.id - b.id; // ensure stability
-    });
+    visible.sort(visibleSort);
   }
   return { first, last, views: visible, ids };
 }
@@ -709,7 +678,7 @@ class ProgressBar {
   }
 
   set percent(val) {
-    this.#percent = MathClamp(val, 0, 100);
+    this.#percent = val;
 
     if (isNaN(val)) {
       this.#classList.add("indeterminate");
@@ -850,6 +819,13 @@ function toggleCheckedBtn(button, toggle, view = null) {
   view?.classList.toggle("hidden", !toggle);
 }
 
+function toggleSelectedBtn(button, toggle, view = null) {
+  button.classList.toggle("selected", toggle);
+  button.setAttribute("aria-selected", toggle);
+
+  view?.classList.toggle("hidden", !toggle);
+}
+
 function toggleExpandedBtn(button, toggle, view = null) {
   button.classList.toggle("toggled", toggle);
   button.setAttribute("aria-expanded", toggle);
@@ -907,7 +883,6 @@ export {
   PresentationModeState,
   ProgressBar,
   removeNullCharacters,
-  RenderingStates,
   SCROLLBAR_PADDING,
   scrollIntoView,
   ScrollMode,
@@ -916,6 +891,7 @@ export {
   TextLayerMode,
   toggleCheckedBtn,
   toggleExpandedBtn,
+  toggleSelectedBtn,
   UNKNOWN_SCALE,
   VERTICAL_PADDING,
   watchScroll,

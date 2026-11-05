@@ -22,16 +22,12 @@ import {
   ColorManager,
   KeyboardManager,
 } from "./tools.js";
-import {
-  FeatureTest,
-  MathClamp,
-  shadow,
-  unreachable,
-} from "../../shared/util.js";
+import { FeatureTest, shadow, unreachable } from "../../shared/util.js";
 import { noContextMenu, stopEvent } from "../display_utils.js";
 import { AltText } from "./alt_text.js";
 import { Comment } from "./comment.js";
 import { EditorToolbar } from "./toolbar.js";
+import { MathClamp } from "../../shared/math_clamp.js";
 import { TouchManager } from "../touch_manager.js";
 
 /**
@@ -113,6 +109,8 @@ class AnnotationEditor {
 
   static _l10n = null;
 
+  static _l10nAlert = null;
+
   static _l10nResizer = null;
 
   #isDraggable = false;
@@ -139,26 +137,23 @@ class AnnotationEditor {
       this,
       "_resizerKeyboardManager",
       new KeyboardManager([
-        [["ArrowLeft", "mac+ArrowLeft"], resize, { args: [-small, 0] }],
+        [["ArrowLeft"], resize, { args: [-small, 0] }],
         [
           ["ctrl+ArrowLeft", "mac+shift+ArrowLeft"],
           resize,
           { args: [-big, 0] },
         ],
-        [["ArrowRight", "mac+ArrowRight"], resize, { args: [small, 0] }],
+        [["ArrowRight"], resize, { args: [small, 0] }],
         [
           ["ctrl+ArrowRight", "mac+shift+ArrowRight"],
           resize,
           { args: [big, 0] },
         ],
-        [["ArrowUp", "mac+ArrowUp"], resize, { args: [0, -small] }],
+        [["ArrowUp"], resize, { args: [0, -small] }],
         [["ctrl+ArrowUp", "mac+shift+ArrowUp"], resize, { args: [0, -big] }],
-        [["ArrowDown", "mac+ArrowDown"], resize, { args: [0, small] }],
+        [["ArrowDown"], resize, { args: [0, small] }],
         [["ctrl+ArrowDown", "mac+shift+ArrowDown"], resize, { args: [0, big] }],
-        [
-          ["Escape", "mac+Escape"],
-          AnnotationEditor.prototype._stopResizingWithKeyboard,
-        ],
+        [["Escape"], AnnotationEditor.prototype._stopResizingWithKeyboard],
       ])
     );
   }
@@ -188,6 +183,7 @@ class AnnotationEditor {
     this.annotationElementId = parameters.annotationElementId || null;
     this.creationDate = parameters.creationDate || new Date();
     this.modificationDate = parameters.modificationDate || null;
+    this.canAddComment = true;
 
     const {
       rotation,
@@ -206,6 +202,10 @@ class AnnotationEditor {
 
     this.isAttachedToDOM = false;
     this.deleted = false;
+  }
+
+  updatePageIndex(newPageIndex) {
+    this.pageIndex = newPageIndex;
   }
 
   get editorType() {
@@ -230,7 +230,7 @@ class AnnotationEditor {
 
   static deleteAnnotationElement(editor) {
     const fakeEditor = new FakeEditor({
-      id: editor.parent.getNextId(),
+      id: editor._uiManager.getId(),
       parent: editor.parent,
       uiManager: editor._uiManager,
     });
@@ -246,7 +246,15 @@ class AnnotationEditor {
   static initialize(l10n, _uiManager) {
     AnnotationEditor._l10n ??= l10n;
 
-    AnnotationEditor._l10nResizer ||= Object.freeze({
+    AnnotationEditor._l10nAlert ??= Object.freeze({
+      highlight: "pdfjs-editor-highlight-added-alert",
+      freetext: "pdfjs-editor-freetext-added-alert",
+      ink: "pdfjs-editor-ink-added-alert",
+      stamp: "pdfjs-editor-stamp-added-alert",
+      signature: "pdfjs-editor-signature-added-alert",
+    });
+
+    AnnotationEditor._l10nResizer ??= Object.freeze({
       topLeft: "pdfjs-editor-resizer-top-left",
       topMiddle: "pdfjs-editor-resizer-top-middle",
       topRight: "pdfjs-editor-resizer-top-right",
@@ -475,6 +483,10 @@ class AnnotationEditor {
   }
 
   _moveAfterPaste(baseX, baseY) {
+    if (this.isClone) {
+      delete this.isClone;
+      return;
+    }
     const [parentWidth, parentHeight] = this.parentDimensions;
     this.setAt(
       baseX * parentWidth,
@@ -560,8 +572,6 @@ class AnnotationEditor {
     style.top = `${(100 * y).toFixed(2)}%`;
 
     this._onTranslating(x, y);
-
-    div.scrollIntoView({ block: "nearest" });
   }
 
   /**
@@ -1173,10 +1183,13 @@ class AnnotationEditor {
   }
 
   addCommentButton() {
-    return (this.#comment ||= new Comment(this));
+    return this.canAddComment ? (this.#comment ||= new Comment(this)) : null;
   }
 
   addStandaloneCommentButton() {
+    if (!this._uiManager.hasCommentManager()) {
+      return;
+    }
     if (this.#commentStandaloneButton) {
       if (this._uiManager.isEditingMode()) {
         this.#commentStandaloneButton.classList.remove("hidden");
@@ -1200,6 +1213,9 @@ class AnnotationEditor {
   }
 
   get comment() {
+    if (!this.#comment) {
+      return null;
+    }
     const {
       data: { richText, text, date, deleted },
     } = this.#comment;
@@ -1213,9 +1229,14 @@ class AnnotationEditor {
     };
   }
 
-  set comment(text) {
+  set comment(value) {
     this.#comment ||= new Comment(this);
-    this.#comment.data = text;
+    if (typeof value === "object" && value !== null) {
+      // Restore full comment data (used for undo).
+      this.#comment.restoreData(value);
+    } else {
+      this.#comment.data = value;
+    }
     if (this.hasComment) {
       this.removeCommentButtonFromToolbar();
       this.addStandaloneCommentButton();
@@ -1336,16 +1357,7 @@ class AnnotationEditor {
 
     bindEvents(this, div, ["keydown", "pointerdown", "dblclick"]);
 
-    if (this.isResizable && this._uiManager._supportsPinchToZoom) {
-      this.#touchManager ||= new TouchManager({
-        container: div,
-        isPinchingDisabled: () => !this.isSelected,
-        onPinchStart: this.#touchPinchStartCallback.bind(this),
-        onPinching: this.#touchPinchCallback.bind(this),
-        onPinchEnd: this.#touchPinchEndCallback.bind(this),
-        signal: this._uiManager._signal,
-      });
-    }
+    this.#addTouchManager();
 
     this.addStandaloneCommentButton();
     this._uiManager._editorUndoBar?.hide();
@@ -1507,6 +1519,11 @@ class AnnotationEditor {
           this.#prevDragX = x;
           this.#prevDragY = y;
           this._uiManager.dragSelectedEditors(tx, ty);
+          // Keep the editor where the drag started in view. Calling
+          // `scrollIntoView` here does it once per handled pointermove, after
+          // `dragSelectedEditors` has moved the selection, rather than once
+          // from every selected editor's `drag` method.
+          this.div.scrollIntoView({ block: "nearest" });
         },
         opts
       );
@@ -1780,6 +1797,25 @@ class AnnotationEditor {
     this.div.addEventListener("focusout", this.focusout.bind(this), { signal });
   }
 
+  #addTouchManager() {
+    if (
+      this.#touchManager ||
+      !this.div ||
+      !this.isResizable ||
+      !this._uiManager._supportsPinchToZoom
+    ) {
+      return;
+    }
+    this.#touchManager = new TouchManager({
+      container: this.div,
+      isPinchingDisabled: () => !this.isSelected,
+      onPinchStart: this.#touchPinchStartCallback.bind(this),
+      onPinching: this.#touchPinchCallback.bind(this),
+      onPinchEnd: this.#touchPinchEndCallback.bind(this),
+      signal: this._uiManager._signal,
+    });
+  }
+
   /**
    * Rebuild the editor in case it has been removed on undo.
    *
@@ -1787,6 +1823,7 @@ class AnnotationEditor {
    */
   rebuild() {
     this.#addFocusListeners();
+    this.#addTouchManager();
   }
 
   /**
@@ -1846,7 +1883,7 @@ class AnnotationEditor {
   static async deserialize(data, parent, uiManager) {
     const editor = new this.prototype.constructor({
       parent,
-      id: parent.getNextId(),
+      id: uiManager.getId(),
       uiManager,
       annotationElementId: data.annotationElementId,
       creationDate: data.creationDate,
@@ -1894,11 +1931,17 @@ class AnnotationEditor {
       // undo/redo so we must commit it before.
       this.commit();
     }
+    // End an active pinch before detaching: its callback uses `parent` and
+    // records the resize.
+    this.#touchManager?.destroy();
+    this.#touchManager = null;
+
     if (this.parent) {
       this.parent.remove(this);
     } else {
       this._uiManager.removeEditor(this);
     }
+    this.hideCommentPopup();
 
     if (this.#moveInDOMTimeout) {
       clearTimeout(this.#moveInDOMTimeout);
@@ -1913,8 +1956,8 @@ class AnnotationEditor {
       this.#telemetryTimeouts = null;
     }
     this.parent = null;
-    this.#touchManager?.destroy();
-    this.#touchManager = null;
+    this.#fakeAnnotation?.remove();
+    this.#fakeAnnotation = null;
   }
 
   /**
@@ -1934,6 +1977,9 @@ class AnnotationEditor {
     }
   }
 
+  /**
+   * @returns {Array<number>|null}
+   */
   get toolbarPosition() {
     return null;
   }
@@ -1985,7 +2031,7 @@ class AnnotationEditor {
   }
 
   setCommentButtonStates(options) {
-    this.#comment.setCommentButtonStates(options);
+    this.#comment?.setCommentButtonStates(options);
   }
 
   /**
@@ -2044,11 +2090,13 @@ class AnnotationEditor {
       // on the top-left one.
       if (nextFirstPosition < firstPosition) {
         for (let i = 0; i < firstPosition - nextFirstPosition; i++) {
-          this.#resizersDiv.append(this.#resizersDiv.firstChild);
+          this.#resizersDiv.append(this.#resizersDiv.firstElementChild);
         }
       } else if (nextFirstPosition > firstPosition) {
         for (let i = 0; i < nextFirstPosition - firstPosition; i++) {
-          this.#resizersDiv.firstChild.before(this.#resizersDiv.lastChild);
+          this.#resizersDiv.firstElementChild.before(
+            this.#resizersDiv.lastElementChild
+          );
         }
       }
 
@@ -2062,7 +2110,7 @@ class AnnotationEditor {
 
     this.#setResizerTabIndex(0);
     this.#isResizerEnabledForKeyboard = true;
-    this.#resizersDiv.firstChild.focus({ focusVisible: true });
+    this.#resizersDiv.firstElementChild.focus({ focusVisible: true });
     event.preventDefault();
     event.stopImmediatePropagation();
   }
@@ -2166,12 +2214,12 @@ class AnnotationEditor {
     }
     this._editToolbar?.hide();
     this.#altText?.toggleAltTextBadge(true);
+    this.hideCommentPopup();
+  }
+
+  hideCommentPopup() {
     if (this.hasComment) {
-      this._uiManager.toggleComment(
-        this,
-        /* isSelected = */ false,
-        /* visibility = */ false
-      );
+      this._uiManager.toggleComment(null);
     }
   }
 
@@ -2227,7 +2275,7 @@ class AnnotationEditor {
     this.enterInEditMode();
     this.parent.updateToolbar({
       mode: this.constructor._editorType,
-      editId: this.id,
+      editId: this.uid,
     });
   }
 
@@ -2390,12 +2438,12 @@ class AnnotationEditor {
   }
 
   resetAnnotationElement(annotation) {
-    const { firstChild } = annotation.container;
+    const { firstElementChild } = annotation.container;
     if (
-      firstChild?.nodeName === "DIV" &&
-      firstChild.classList.contains("annotationContent")
+      firstElementChild?.nodeName === "DIV" &&
+      firstElementChild.classList.contains("annotationContent")
     ) {
-      firstChild.remove();
+      firstElementChild.remove();
     }
   }
 }

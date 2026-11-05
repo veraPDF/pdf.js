@@ -205,7 +205,7 @@ window.onload = function () {
       }
       line = match[1];
       match = line.match(
-        /^(TEST-PASS|TEST-UNEXPECTED-PASS|TEST-KNOWN-FAIL|TEST-UNEXPECTED-FAIL)(\(EXPECTED RANDOM\)|) \| ([^|]+) \|(.*)/
+        /^(TEST-PASS|TEST-UNEXPECTED-PASS|TEST-KNOWN-FAIL|TEST-UNEXPECTED-FAIL)(\(EXPECTED RANDOM\))? \| ([^|]+) \|(.*)/
       );
       if (match) {
         const state = match[1];
@@ -225,7 +225,7 @@ window.onload = function () {
         continue;
       }
       match = line.match(
-        /^ {2}IMAGE[^:]*\((\d+\.?\d*)x(\d+\.?\d*)x(\d+\.?\d*)\): (.*)$/
+        /^ {2}IMAGE[^:]*\((\d+(?:\.\d*)?)x(\d+(?:\.\d*)?)x(\d+(?:\.\d*)?)\): (.*)$/
       );
       if (match) {
         const item = gTestItems.at(-1);
@@ -555,10 +555,11 @@ window.onload = function () {
   window.addEventListener("keydown", function keydown(event) {
     if (event.which === 84) {
       // 't' switch test/ref images
-      let val = 0;
-      if (document.querySelector('input[name="which"][value="0"]:checked')) {
-        val = 1;
-      }
+      const val = document.querySelector(
+        'input[name="which"][value="0"]:checked'
+      )
+        ? 1
+        : 0;
       document
         .querySelector('input[name="which"][value="' + val + '"]')
         .click();

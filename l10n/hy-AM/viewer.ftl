@@ -34,14 +34,14 @@ pdfjs-presentation-mode-button =
     .title = Անցնել Ներկայացման եղանակին
 pdfjs-presentation-mode-button-label = Ներկայացման եղանակ
 pdfjs-open-file-button =
-    .title = Բացել նիշք
+    .title = Բացել ֆայլ
 pdfjs-open-file-button-label = Բացել
 pdfjs-print-button =
     .title = Տպել
 pdfjs-print-button-label = Տպել
 pdfjs-save-button =
-    .title = Պահպանել
-pdfjs-save-button-label = Պահպանել
+    .title = Պահել
+pdfjs-save-button-label = Պահել
 # Used in Firefox for Android as a tooltip for the download button (“download” is a verb).
 pdfjs-download-button =
     .title = Ներբեռնել
@@ -102,8 +102,8 @@ pdfjs-spread-even-button-label = Զույգ վերածածկեր
 pdfjs-document-properties-button =
     .title = Փաստաթղթի հատկությունները…
 pdfjs-document-properties-button-label = Փաստաթղթի հատկությունները…
-pdfjs-document-properties-file-name = Նիշքի անունը.
-pdfjs-document-properties-file-size = Նիշք չափը.
+pdfjs-document-properties-file-name = Ֆայլի անունը.
+pdfjs-document-properties-file-size = Ֆայլի չափը.
 # Variables:
 #   $kb (Number) - the PDF file size in kilobytes
 #   $b (Number) - the PDF file size in bytes
@@ -153,6 +153,15 @@ pdfjs-document-properties-linearized = Արագ վեբ դիտում․
 pdfjs-document-properties-linearized-yes = Այո
 pdfjs-document-properties-linearized-no = Ոչ
 pdfjs-document-properties-close-button = Փակել
+# Shown beneath an invalid signature card to explain why verification
+# failed. The text comes from NSS (e.g. "Signature integrity has been
+# compromised", "PKCS#7 signature could not be parsed") and is not
+# itself localized — it is the underlying error message produced by
+# the verification backend.
+# Variables:
+#   $reason (String) - error message describing why the signature
+#                      could not be verified.
+pdfjs-digital-signature-properties-reason = Պատճառը՝ { $reason }
 
 ## Print
 
@@ -181,7 +190,7 @@ pdfjs-layers-button =
     .title = Ցուցադրել շերտերը (կրկնակի սեղմեք բոլոր շերտերը սկզբնական վիճակին վերականգնելու համար)
 pdfjs-layers-button-label = Շերտեր
 pdfjs-thumbs-button =
-    .title = Ցուցադրել Մանրապատկերը
+    .title = Ցուցադրել մանրապատկերը
 pdfjs-thumbs-button-label = Մանրապատկերը
 pdfjs-current-outline-item-button =
     .title = Գտեք ընթացիկ ուրվագծային տարրը
@@ -214,8 +223,8 @@ pdfjs-find-next-button =
     .title = Գտիր արտահայտության հաջորդ հանդիպումը
 pdfjs-find-next-button-label = Հաջորդը
 pdfjs-find-highlight-checkbox = Գունանշել բոլորը
-pdfjs-find-match-case-checkbox-label = Մեծ(փոքր)ատառ հաշվի առնել
-pdfjs-find-match-diacritics-checkbox-label = Համապատասխանեցնել տարբերիչները
+pdfjs-find-match-case-checkbox-label = Հաշվի առնել մեծ/փոքրատառը
+pdfjs-find-match-diacritics-checkbox-label = Համընկել հնչյունատարբերիչ նշանները
 pdfjs-find-entire-word-checkbox-label = Ամբողջ բառերը
 pdfjs-find-reached-top = Հասել եք փաստաթղթի վերևին, կշարունակվի ներքևից
 pdfjs-find-reached-bottom = Հասել եք փաստաթղթի վերջին, կշարունակվի վերևից
@@ -355,9 +364,9 @@ pdfjs-editor-stamp-add-image-button-label = Հավելել պատկեր
 # This refers to the thickness of the line used for free highlighting (not bound to text)
 pdfjs-editor-free-highlight-thickness-input = Հաստություն
 pdfjs-editor-free-highlight-thickness-title =
-    .title = Փոխել հաստությունը տեքստից բացի այլ տարրեր նշելիս
+    .title = Փոխել հաստությունը՝ տեքստից բացի այլ տարրեր գունանշելիս
 pdfjs-editor-add-signature-container =
-    .aria-label = Ստորագրության կառավարման տարրեր և պահպանված ստորագրություններ
+    .aria-label = Ստորագրության կառավարման տարրեր և պահված ստորագրություններ
 pdfjs-editor-signature-add-signature-button =
     .title = Ավելացնել նոր ստորագրություն
 pdfjs-editor-signature-add-signature-button-label = Ավելացնել նոր ստորագրություն
@@ -365,11 +374,22 @@ pdfjs-editor-signature-add-signature-button-label = Ավելացնել նոր ս
 # Variables:
 #   $description (String) - a string describing/labeling the signature.
 pdfjs-editor-add-saved-signature-button =
-    .title = Պահպանված ստորագրություն՝ { $description }
+    .title = Պահված ստորագրություն՝ { $description }
 # .default-content is used as a placeholder in an empty text editor.
 pdfjs-free-text2 =
     .aria-label = Գրվածքի խմբագիր
     .default-content = Սկսեք մուտքագրել...
+# Used to show how many comments are present in the pdf file.
+# Variables:
+#   $count (Number) - the number of comments.
+pdfjs-editor-comments-sidebar-title =
+    { $count ->
+        [one] Մեկնաբանություն
+       *[other] Մեկնաբանություններ
+    }
+# Instructional copy to add a comment by selecting text or an annotations.
+pdfjs-editor-comments-sidebar-no-comments1 = Տեսնո՞ւմ եք ինչ-որ ուշագրավ բան։ Գունանշեք այն և թողեք մեկնաբանություն։
+pdfjs-editor-comments-sidebar-no-comments-link = Իմանալ ավելին
 
 ## Alt-text dialog
 
@@ -383,7 +403,7 @@ pdfjs-editor-alt-text-add-description-description = Ձգտեք գրել 1-2 նա
 pdfjs-editor-alt-text-mark-decorative-label = Նշել որպես դեկորատիվ
 pdfjs-editor-alt-text-mark-decorative-description = Սա օգտագործվում է դեկորատիվ պատկերների համար, ինչպիսիք են եզրագծերը կամ ջրանիշերը։
 pdfjs-editor-alt-text-cancel-button = Չեղարկել
-pdfjs-editor-alt-text-save-button = Պահպանել
+pdfjs-editor-alt-text-save-button = Պահել
 pdfjs-editor-alt-text-decorative-tooltip = Նշել որպես դեկորատիվ
 # .placeholder: This is a placeholder for the alt text input area
 pdfjs-editor-alt-text-textarea =
@@ -531,7 +551,7 @@ pdfjs-editor-undo-bar-close-button-label = Փակել
 
 ## Add a signature dialog
 
-pdfjs-editor-add-signature-dialog-label = Այս յուրահատկությունը հնարավորություն է տալիս օգտվողին ստեղծել ստորագրություն՝ PDF փաստաթղթում ավելացնելու համար: Օգտվողը կարող է խմբագրել անունը (որը նաև ծառայում է որպես alt տեքստ) և լրացուցիչ պահպանել այն՝ հետագա օգտագործման համար:
+pdfjs-editor-add-signature-dialog-label = Այս յուրահատկությունը հնարավորություն է տալիս օգտվողին ստեղծել ստորագրություն՝ PDF փաստաթղթում ավելացնելու համար: Օգտվողը կարող է խմբագրել անունը (որը նաև ծառայում է որպես alt տեքստ) և լրացուցիչ պահել այն՝ հետագա օգտագործման համար:
 pdfjs-editor-add-signature-dialog-title = Ավելացնել ստորագրություն
 
 ## Tab names
@@ -548,14 +568,14 @@ pdfjs-editor-add-signature-image-button = Պատկեր
 ## Tab panels
 
 pdfjs-editor-add-signature-type-input =
-    .aria-label = Մուտքագրեք ձեր ստորագրությունը
-    .placeholder = Մուտքագրեք ձեր ստորագրությունը
+    .aria-label = Մուտքագրել ստորագրություն
+    .placeholder = Մուտքագրել ստորագրություն
 pdfjs-editor-add-signature-draw-placeholder = Նկարեք ձեր ստորագրությունը
 pdfjs-editor-add-signature-draw-thickness-range-label = Հաստություն
 # Variables:
 #   $thickness (Number) - the thickness (in pixels) of the line used to draw a signature.
 pdfjs-editor-add-signature-draw-thickness-range =
-    .title = Նկաելու հաստությունը՝ { $thickness }
+    .title = Նկարելու հաստությունը՝ { $thickness }
 pdfjs-editor-add-signature-image-placeholder = Քաշեք ֆայլը այստեղ՝ վերբեռնելու համար
 pdfjs-editor-add-signature-image-browse-link =
     { PLATFORM() ->
@@ -572,8 +592,8 @@ pdfjs-editor-add-signature-description-default-when-drawing = Ստորագրու
 pdfjs-editor-add-signature-clear-button-label = Մաքրել ստորագրությունը
 pdfjs-editor-add-signature-clear-button =
     .title = Մաքրել ստորագրությունը
-pdfjs-editor-add-signature-save-checkbox = Պահպանել ստորագրությունը
-pdfjs-editor-add-signature-save-warning-message = Դուք հասել եք պահպանված ստորագրությունների 5 սահմանաչափին։ Հեռացրեք մեկը՝ ավելին պահպանելու համար։
+pdfjs-editor-add-signature-save-checkbox = Պահել ստորագրությունը
+pdfjs-editor-add-signature-save-warning-message = Դուք հասել եք պահպանված ստորագրությունների 5 սահմանաչափին։ Հեռացրեք մեկը՝ ավելին պահելու համար։
 pdfjs-editor-add-signature-image-upload-error-title = Չհաջողվեց վերբեռնել պատկերը
 pdfjs-editor-add-signature-image-upload-error-description = Ստուգեք ձեր ցանցային կապակցումը կամ փորձեք մեկ այլ պատկեր։
 pdfjs-editor-add-signature-image-no-data-error-title = Այս պատկերը հնարավոր չէ վերածել ստորագրության
@@ -588,29 +608,34 @@ pdfjs-editor-edit-signature-update-button = Թարմացնել
 
 ##  Edit a comment dialog
 
-pdfjs-editor-edit-comment-actions-button-label = Գործողություններ
-pdfjs-editor-edit-comment-actions-button =
-    .title = Գործողություններ
-pdfjs-editor-edit-comment-close-button-label = Փակել
-pdfjs-editor-edit-comment-close-button =
-    .title = Փակել
-pdfjs-editor-edit-comment-actions-edit-button-label = Խմբագրել
-pdfjs-editor-edit-comment-actions-delete-button-label = Ջնջել
-pdfjs-editor-edit-comment-manager-text-input =
-    .placeholder = Մուտքագրեք ձեր մեկնաբանությունը
-pdfjs-editor-edit-comment-manager-cancel-button = Չեղարկել
-pdfjs-editor-edit-comment-manager-save-button = Պահպանել
+# No existing comment
+pdfjs-editor-edit-comment-dialog-title-when-adding = Ավելացնել մեկնաբանություն
+pdfjs-editor-edit-comment-dialog-save-button-when-adding = Ավելացնել
+pdfjs-editor-edit-comment-dialog-text-input =
+    .placeholder = Մուտքագրեք այստեղ…
+pdfjs-editor-edit-comment-dialog-cancel-button = Չեղարկել
 
 ## Edit a comment button in the editor toolbar
 
-pdfjs-editor-edit-comment-button =
-    .title = Խմբագրել մեկնաբանությունը
+pdfjs-editor-add-comment-button =
+    .title = Ավելացնել մեկնաբանություն
+
+## The view manager is a sidebar displaying different views:
+##  - thumbnails;
+##  - outline;
+##  - attachments;
+##  - layers.
+## The thumbnails view is used to edit the pdf: remove/insert pages, ...
+
+pdfjs-views-manager-add-file-button =
+    .title = Ավելացնել ֆայլ
+pdfjs-views-manager-add-file-button-label = Ավելացնել ֆայլ
 
 ## Main menu for adding/removing signatures
 
 pdfjs-editor-delete-signature-button1 =
-    .title = Հեռացնել պահպանված ստորագրությունը
-pdfjs-editor-delete-signature-button-label1 = Հեռացնել պահպանված ստորագրությունը
+    .title = Հեռացնել պահված ստորագրությունը
+pdfjs-editor-delete-signature-button-label1 = Հեռացնել պահված ստորագրությունը
 
 ## Editor toolbar
 

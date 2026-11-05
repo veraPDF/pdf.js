@@ -24,10 +24,11 @@ const PDFFindBar = null;
 const PDFLayerViewer = null;
 const PDFOutlineViewer = null;
 const PDFPresentationMode = null;
-const PDFSidebar = null;
 const PDFThumbnailViewer = null;
 const SecondaryToolbar = null;
 const SignatureManager = null;
+const SignaturePropertiesManager = null;
+const ViewsManager = null;
 
 export {
   AltTextManager,
@@ -41,8 +42,9 @@ export {
   PDFLayerViewer,
   PDFOutlineViewer,
   PDFPresentationMode,
-  PDFSidebar,
   PDFThumbnailViewer,
   SecondaryToolbar,
   SignatureManager,
+  SignaturePropertiesManager,
+  ViewsManager,
 };

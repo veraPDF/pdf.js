@@ -14,9 +14,13 @@
  */
 
 /** @typedef {import("./event_utils").EventBus} EventBus */
-/** @typedef {import("./interfaces").IPDFLinkService} IPDFLinkService */
 
-import { isValidExplicitDest } from "pdfjs-lib";
+/**
+ * @import { CatalogAttachmentContent } from "../src/core/catalog.js";
+ */
+
+import { isValidExplicitDest, PasswordException } from "pdfjs-lib";
+import { internalOpt } from "./internal_evt.js";
 import { parseQueryString } from "./ui_utils.js";
 
 const DEFAULT_LINK_REL = "noopener noreferrer nofollow";
@@ -45,7 +49,6 @@ const LinkTarget = {
 /**
  * Performs navigation functions inside PDF, such as opening specified page,
  * or destination.
- * @implements {IPDFLinkService}
  */
 class PDFLinkService {
   externalLinkEnabled = true;
@@ -87,7 +90,7 @@ class PDFLinkService {
    * @type {number}
    */
   get pagesCount() {
-    return this.pdfDocument ? this.pdfDocument.numPages : 0;
+    return this.pdfDocument?.pagesMapper.pagesNumber || 0;
   }
 
   /**
@@ -194,7 +197,7 @@ class PDFLinkService {
     });
 
     const ac = new AbortController();
-    this.eventBus._on(
+    this.eventBus.on(
       "textlayerrendered",
       evt => {
         if (evt.pageNumber === pageNumber) {
@@ -202,7 +205,7 @@ class PDFLinkService {
           ac.abort();
         }
       },
-      { signal: ac.signal }
+      { signal: ac.signal, ...internalOpt }
     );
   }
 
@@ -218,13 +221,11 @@ class PDFLinkService {
     const pageNumber =
       (typeof val === "string" && this.pdfViewer.pageLabelToPageNumber(val)) ||
       val | 0;
-    if (
-      !(
-        Number.isInteger(pageNumber) &&
-        pageNumber > 0 &&
-        pageNumber <= this.pagesCount
-      )
-    ) {
+    if (!(
+      Number.isInteger(pageNumber) &&
+      pageNumber > 0 &&
+      pageNumber <= this.pagesCount
+    )) {
       console.error(`PDFLinkService.goToPage: "${val}" is not a valid page.`);
       return;
     }
@@ -256,6 +257,23 @@ class PDFLinkService {
   }
 
   /**
+   * @param {string} id
+   *   Unique attachment identifier (required).
+   * @returns {Promise<CatalogAttachmentContent>}
+   *   Content.
+   */
+  async getAttachmentContent(id) {
+    try {
+      return await this.pdfDocument?.getAttachmentContent(id);
+    } catch (error) {
+      if (!(error instanceof PasswordException)) {
+        console.warn(`Unable to load attachment content: ${error}`);
+      }
+    }
+    return null;
+  }
+
+  /**
    * Adds various attributes (href, title, target, rel) to hyperlinks.
    * @param {HTMLAnchorElement} link
    * @param {string} url
@@ -268,11 +286,21 @@ class PDFLinkService {
     const target = newWindow ? LinkTarget.BLANK : this.externalLinkTarget,
       rel = this.externalLinkRel;
 
+    // Strip userinfo (user:password@) from URLs used for display, to prevent
+    // phishing via hostname-spoofing (e.g. https://trusted.example@attacker.example/).
+    let displayUrl = url;
+    const parsedUrl = URL.parse(url);
+    if (parsedUrl?.username || parsedUrl?.password) {
+      parsedUrl.username = parsedUrl.password = "";
+      displayUrl = parsedUrl.href;
+    }
+
     if (this.externalLinkEnabled) {
-      link.href = link.title = url;
+      link.href = url;
+      link.title = displayUrl;
     } else {
       link.href = "";
-      link.title = `Disabled: ${url}`;
+      link.title = `Disabled: ${displayUrl}`;
       link.onclick = () => false;
     }
 
@@ -425,7 +453,7 @@ class PDFLinkService {
       }
       // Support opening of PDF attachments in the Firefox PDF Viewer,
       // which uses a couple of non-standard hash parameters; refer to
-      // `DownloadManager.openOrDownloadData` in the firefoxcom.js file.
+      // `DownloadManager._getOpenDataUrl` in the firefoxcom.js file.
       if (!params.has("filename") || !params.has("filedest")) {
         return;
       }
@@ -517,9 +545,6 @@ class PDFLinkService {
   }
 }
 
-/**
- * @implements {IPDFLinkService}
- */
 class SimpleLinkService extends PDFLinkService {
   setDocument(pdfDocument, baseUrl = null) {}
 }

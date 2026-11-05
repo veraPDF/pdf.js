@@ -171,7 +171,7 @@ class XFAObject {
 
   [$onChildCheck](child) {
     return (
-      this.hasOwnProperty(child[$nodeName]) &&
+      Object.hasOwn(this, child[$nodeName]) &&
       child[$namespaceId] === this[$namespaceId]
     );
   }
@@ -240,7 +240,7 @@ class XFAObject {
   }
 
   [$hasSettableValue]() {
-    return this.hasOwnProperty("value");
+    return Object.hasOwn(this, "value");
   }
 
   [$setValue](_) {}
@@ -284,10 +284,9 @@ class XFAObject {
   }
 
   [$text]() {
-    if (this[_children].length === 0) {
-      return this[$content];
-    }
-    return this[_children].map(c => c[$text]()).join("");
+    return this[_children].length === 0
+      ? this[$content]
+      : this[_children].map(c => c[$text]()).join("");
   }
 
   get [_attributeNames]() {
@@ -326,14 +325,6 @@ class XFAObject {
 
   [$getSubformParent]() {
     return this[$getParent]();
-  }
-
-  [$getChildren](name = null) {
-    if (!name) {
-      return this[_children];
-    }
-
-    return this[name];
   }
 
   [$dump]() {
@@ -447,7 +438,10 @@ class XFAObject {
   [_getUnsetAttributes](protoAttributes) {
     const allAttr = this[_attributeNames];
     const setAttr = this[_setAttributes];
-    return [...protoAttributes].filter(x => allAttr.has(x) && !setAttr.has(x));
+    return protoAttributes
+      .keys()
+      .filter(x => allAttr.has(x) && !setAttr.has(x))
+      .toArray();
   }
 
   /**
@@ -518,9 +512,7 @@ class XFAObject {
         true /* = dotDotAllowed */,
         false /* = useCache */
       );
-      if (proto) {
-        proto = proto[0];
-      }
+      proto &&= proto[0];
     }
 
     if (!proto) {
@@ -679,11 +671,9 @@ class XFAObject {
   }
 
   [$getChildren](name = null) {
-    if (!name) {
-      return this[_children];
-    }
-
-    return this[_children].filter(c => c[$nodeName] === name);
+    return !name
+      ? this[_children]
+      : this[_children].filter(c => c[$nodeName] === name);
   }
 
   [$getChildrenByClass](name) {
@@ -817,7 +807,7 @@ class XmlObject extends XFAObject {
       for (const [attrName, value] of Object.entries(attributes)) {
         map.set(attrName, new XFAAttribute(this, attrName, value));
       }
-      if (attributes.hasOwnProperty($nsAttributes)) {
+      if (Object.hasOwn(attributes, $nsAttributes)) {
         // XFA attributes.
         const dataNode = attributes[$nsAttributes].xfa.dataNode;
         if (dataNode !== undefined) {
@@ -841,7 +831,7 @@ class XmlObject extends XFAObject {
     const utf8TagName = utf8StringToString(tagName);
     const prefix = this[$namespaceId] === NS_DATASETS ? "xfa:" : "";
     buf.push(`<${prefix}${utf8TagName}`);
-    for (const [name, value] of this[_attributes].entries()) {
+    for (const [name, value] of this[_attributes]) {
       const utf8Name = utf8StringToString(name);
       buf.push(` ${utf8Name}="${encodeToXmlString(value[$content])}"`);
     }
@@ -905,14 +895,6 @@ class XmlObject extends XFAObject {
     }
 
     return HTMLResult.EMPTY;
-  }
-
-  [$getChildren](name = null) {
-    if (!name) {
-      return this[_children];
-    }
-
-    return this[_children].filter(c => c[$nodeName] === name);
   }
 
   [$getAttributes]() {

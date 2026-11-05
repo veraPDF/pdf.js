@@ -19,7 +19,7 @@ import { testCrossOriginRedirects } from "./common_pdfstream_tests.js";
 import { TestPdfsServer } from "./test_utils.js";
 
 describe("network", function () {
-  const pdf1 = new URL("../pdfs/tracemonkey.pdf", window.location).href;
+  const pdf1 = new URL("../pdfs/tracemonkey.pdf", window.location);
   const pdf1Length = 1016315;
 
   it("read without stream and range", async function () {
@@ -55,8 +55,8 @@ describe("network", function () {
 
     expect(len).toEqual(pdf1Length);
     expect(count).toEqual(1);
-    expect(isStreamingSupported).toEqual(false);
-    expect(isRangeSupported).toEqual(false);
+    expect(isStreamingSupported).toBeFalse();
+    expect(isRangeSupported).toBeFalse();
   });
 
   it("read custom ranges", async function () {
@@ -113,9 +113,9 @@ describe("network", function () {
 
     expect(result1.value).toEqual(rangeSize);
     expect(result2.value).toEqual(tailSize);
-    expect(isStreamingSupported).toEqual(false);
-    expect(isRangeSupported).toEqual(true);
-    expect(fullReaderCancelled).toEqual(true);
+    expect(isStreamingSupported).toBeFalse();
+    expect(isRangeSupported).toBeTrue();
+    expect(fullReaderCancelled).toBeTrue();
   });
 
   it(`handle reading ranges with missing/invalid "Content-Range" header`, async function () {
@@ -124,9 +124,12 @@ describe("network", function () {
     }
 
     async function readRanges(mode) {
+      const pdfUrl = new URL(pdf1);
+      pdfUrl.searchParams.set("test-network-break-ranges", mode);
+
       const rangeSize = 32768;
       const stream = new PDFNetworkStream({
-        url: `${pdf1}?test-network-break-ranges=${mode}`,
+        url: pdfUrl,
         length: pdf1Length,
         rangeChunkSize: rangeSize,
         disableStream: true,
@@ -137,7 +140,7 @@ describe("network", function () {
 
       await fullReader.headersReady;
       // Ensure that range requests are supported.
-      expect(fullReader.isRangeSupported).toEqual(true);
+      expect(fullReader.isRangeSupported).toBeTrue();
       // We shall be able to close the full reader without issues.
       fullReader.cancel(new AbortException("Don't need fullReader."));
 
@@ -150,11 +153,11 @@ describe("network", function () {
         await rangeReader.read();
 
         // Shouldn't get here.
-        expect(false).toEqual(true);
+        expect(false).toBeTrue();
       } catch (ex) {
-        expect(ex instanceof ResponseException).toEqual(true);
+        expect(ex).toBeInstanceOf(ResponseException);
         expect(ex.status).toEqual(0);
-        expect(ex.missing).toEqual(false);
+        expect(ex.missing).toBeFalse();
       }
     }
 

@@ -13,3 +13,4 @@ src/core/document.js.orig
 src/core/evaluator.js.orig
 src/core/catalog.js.orig
 src/core/worker.js.orig
+.vscode/

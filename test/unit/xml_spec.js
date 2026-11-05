@@ -109,6 +109,27 @@ describe("XML", function () {
     });
   });
 
+  describe("character references", function () {
+    const parseText = xml =>
+      new SimpleXMLParser({}).parseFromString(xml).documentElement.textContent;
+
+    it("should resolve the valid ones", function () {
+      expect(parseText("<a>&#65;&#x42;&#x1F602;&#0;&#x10FFFF;</a>")).toEqual(
+        "AB\u{1F602}\0\u{10FFFF}"
+      );
+    });
+
+    it("should keep the invalid ones as-is", function () {
+      // These must not throw: `String.fromCodePoint` rejects anything which
+      // isn't a code point.
+      expect(parseText("<a>&#xZZ;</a>")).toEqual("&#xZZ;");
+      expect(parseText("<a>&#zz;</a>")).toEqual("&#zz;");
+      expect(parseText("<a>&#x110000;</a>")).toEqual("&#x110000;");
+      expect(parseText("<a>&#1114112;</a>")).toEqual("&#1114112;");
+      expect(parseText("<a>&#-1;</a>")).toEqual("&#-1;");
+    });
+  });
+
   it("should parse processing instructions", function () {
     const xml = `
       <a>
@@ -131,5 +152,34 @@ describe("XML", function () {
       ["foo", "bar oof"],
       ["foo", ""],
     ]);
+  });
+
+  describe("entities", function () {
+    const parseText = xml =>
+      new SimpleXMLParser({}).parseFromString(xml).documentElement.textContent;
+
+    it("should resolve the entities", function () {
+      expect(
+        parseText("<a>&lt;b&gt; &amp; &quot;c&quot; &apos;d&apos;</a>")
+      ).toEqual(`<b> & "c" 'd'`);
+      expect(parseText("<a>&#65;&#x42;</a>")).toEqual("AB");
+    });
+
+    it("should keep the unresolved entities as-is", function () {
+      expect(parseText("<a>&unknown; a&b;c</a>")).toEqual("&unknown; a&b;c");
+    });
+
+    it("should resolve an entity preceded by a bare ampersand", function () {
+      expect(parseText("<a>AT&T &amp; Co</a>")).toEqual("AT&T & Co");
+      expect(parseText("<a>&&amp;</a>")).toEqual("&&");
+    });
+
+    it("should handle a long run of ampersands efficiently", function () {
+      const text = "&".repeat(100000);
+
+      const startTime = performance.now();
+      expect(parseText(`<a>${text}</a>`)).toEqual(text);
+      expect(performance.now() - startTime).toBeLessThan(1000);
+    });
   });
 });

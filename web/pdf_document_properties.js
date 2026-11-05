@@ -14,12 +14,12 @@
  */
 
 /** @typedef {import("./event_utils.js").EventBus} EventBus */
-/** @typedef {import("./interfaces.js").IL10n} IL10n */
 /** @typedef {import("./overlay_manager.js").OverlayManager} OverlayManager */
 // eslint-disable-next-line max-len
 /** @typedef {import("../src/display/api.js").PDFDocumentProxy} PDFDocumentProxy */
 
 import { getPageSizeInches, isPortraitOrientation } from "./ui_utils.js";
+import { internalOpt } from "./internal_evt.js";
 import { PDFDateString } from "pdfjs-lib";
 
 // See https://en.wikibooks.org/wiki/Lentis/Conversion_to_the_Metric_Standard_in_the_United_States
@@ -58,7 +58,7 @@ class PDFDocumentProperties {
    * @param {PDFDocumentPropertiesOptions} options
    * @param {OverlayManager} overlayManager - Manager for the viewer overlays.
    * @param {EventBus} eventBus - The application event bus.
-   * @param {IL10n} l10n - Localization service.
+   * @param {L10n} l10n - Localization service.
    * @param {function} fileNameLookup - The function that is used to lookup
    *   the document fileName.
    */
@@ -83,12 +83,20 @@ class PDFDocumentProperties {
 
     this.overlayManager.register(this.dialog);
 
-    eventBus._on("pagechanging", evt => {
-      this._currentPageNumber = evt.pageNumber;
-    });
-    eventBus._on("rotationchanging", evt => {
-      this._pagesRotation = evt.pagesRotation;
-    });
+    eventBus.on(
+      "pagechanging",
+      evt => {
+        this._currentPageNumber = evt.pageNumber;
+      },
+      internalOpt
+    );
+    eventBus.on(
+      "rotationchanging",
+      evt => {
+        this._pagesRotation = evt.pagesRotation;
+      },
+      internalOpt
+    );
   }
 
   /**
@@ -112,6 +120,9 @@ class PDFDocumentProperties {
       this.#updateUI();
       return;
     }
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
+      this._fieldDataLastUpdated = Date.now();
+    }
 
     // Get the document properties.
     const [
@@ -119,7 +130,13 @@ class PDFDocumentProperties {
       pdfPage,
     ] = await Promise.all([
       this.pdfDocument.getMetadata(),
-      this.pdfDocument.getPage(currentPageNumber),
+      this.pdfDocument.getPage(currentPageNumber).catch(reason => {
+        console.error(
+          `PDFDocumentProperties - unable to get page ${currentPageNumber}.`,
+          reason
+        );
+        return null;
+      }),
     ]);
 
     const [
@@ -136,7 +153,7 @@ class PDFDocumentProperties {
       this._titleLookup(),
       this.#parseDate(metadata?.get("xmp:createdate"), info.CreationDate),
       this.#parseDate(metadata?.get("xmp:modifydate"), info.ModDate),
-      this.#parsePageSize(getPageSizeInches(pdfPage), pagesRotation),
+      this.#parsePageSize(pdfPage, pagesRotation),
       this.#parseLinearization(info.IsLinearized),
     ]);
 
@@ -221,6 +238,9 @@ class PDFDocumentProperties {
       // since it will be updated the next time `this.open` is called.
       return;
     }
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
+      this.dialog.dataset.fieldDataLastUpdated = this._fieldDataLastUpdated;
+    }
     for (const id in this.fields) {
       const content = this.#fieldData?.[id];
       this.fields[id].textContent = content || content === 0 ? content : "-";
@@ -240,10 +260,11 @@ class PDFDocumentProperties {
       : undefined;
   }
 
-  async #parsePageSize(pageSizeInches, pagesRotation) {
-    if (!pageSizeInches) {
+  async #parsePageSize(pdfPage, pagesRotation) {
+    if (!pdfPage) {
       return undefined;
     }
+    let pageSizeInches = getPageSizeInches(pdfPage);
     // Take the viewer rotation into account as well; compare with Adobe Reader.
     if (pagesRotation % 180 !== 0) {
       pageSizeInches = {
