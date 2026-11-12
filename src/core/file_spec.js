@@ -72,12 +72,9 @@ class FileSpec {
   }
 
   get afRelationship() {
-    let afRelationship = "";
-
     const rel = this.root?.get("AFRelationship");
-    if (typeof rel === "string") afRelationship = rel;
-    else if (rel instanceof Name) afRelationship = rel.name;
-    return shadow(this, "afRelationship", afRelationship);
+    if (typeof rel === "string") return rel;
+    return rel instanceof Name ? rel.name : "";
   }
 
   get serializable() {

@@ -34,7 +34,7 @@ class NameOrNumberTree {
     this._type = type;
   }
 
-  getAll(isRaw = false) {
+  getAll(isRaw = false, withIds = false) {
     const map = new Map();
     if (!this.root) {
       return map;
@@ -72,10 +72,12 @@ class NameOrNumberTree {
         continue;
       }
       for (let i = 0, ii = entries.length; i < ii; i += 2) {
-        map.set(
-          isRaw ? entries[i] : xref.fetchIfRef(entries[i]),
-          isRaw ? entries[i + 1] : xref.fetchIfRef(entries[i + 1])
-        );
+        const rawKey = entries[i], rawValue = entries[i + 1];
+        if (isRaw) map.set(rawKey, rawValue);
+        else {
+          const value = xref.fetchIfRef(rawValue);
+          map.set(xref.fetchIfRef(rawKey), withIds ? [value, rawValue] : value);
+        }
       }
     }
     return map;

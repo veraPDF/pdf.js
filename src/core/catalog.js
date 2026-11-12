@@ -1134,10 +1134,10 @@ class Catalog {
 
     if (obj instanceof Dict && obj.has("EmbeddedFiles")) {
       const nameTree = new NameTree(obj.getRaw("EmbeddedFiles"), this.xref);
-      for (const [key, value] of nameTree.getAll()) {
+      for (const [key, [value, ref]] of nameTree.getAll(false, true)) {
         (attachments ??= new Map()).set(
           stringToPDFString(key, /* keepEscapeSequence = */ true),
-          new FileSpec(value).serializable
+          { ...new FileSpec(value).serializable, ref }
         );
       }
     }
